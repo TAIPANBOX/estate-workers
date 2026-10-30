@@ -55,6 +55,11 @@ Process and invariants only. English throughout, no long dashes.
     mutants "a template variable may ...")*
 14. **Every program a gate starts is installed by the installer.**
     *(test: `TestInstallerProvidesEveryGateProgram`)*
+15. **The model's shell cannot make a stop appear.** Claude Code's sandbox
+    creates a denied file that is missing while a command runs, so the
+    auto stop lives in a denied directory and no deny names a single file.
+    *(tests: `TestDenyNamesNoSingleFileTheSandboxWouldCreate`,
+    `TestAutoStopLivesInADeniedDirectoryThatExistsBeforeAnyRun`)*
 
 ## Escalate, do not push through
 

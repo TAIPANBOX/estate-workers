@@ -52,9 +52,11 @@ var Deny = []string{
 	"Edit(./.git)", "Write(./.git)", "Edit(./.git/**)", "Write(./.git/**)", "Edit(./.github/**)", "Write(./.github/**)",
 	"Edit(./.claude/**)", "Write(./.claude/**)", "Edit(./.mcp.json)", "Write(./.mcp.json)",
 	// The worker's own state, never the job tree the model works in: Claude
-	// Code applies these rules to the paths shell commands write as well.
+	// Code applies these rules to the paths shell commands write as well,
+	// and creates a denied file that is missing while a command runs, so
+	// each names a directory or a pattern, never a single file.
 	"Edit(//var/lib/claudew/*.jsonl)", "Write(//var/lib/claudew/*.jsonl)",
-	"Edit(//var/lib/claudew/STOP)", "Write(//var/lib/claudew/STOP)",
+	"Edit(//var/lib/claudew/stop/**)", "Write(//var/lib/claudew/stop/**)",
 	"Edit(//var/lib/claudew/queue/**)", "Write(//var/lib/claudew/queue/**)",
 	"Edit(//var/lib/claudew/runs/**)", "Write(//var/lib/claudew/runs/**)",
 	"Edit(//var/lib/claudew/cache/**)", "Write(//var/lib/claudew/cache/**)",

@@ -347,7 +347,7 @@ func TestDenyGuardsTheWorkerStateButNotTheJobTree(t *testing.T) {
 			}
 		}
 		for _, p := range []string{
-			"/var/lib/claudew/ledger.jsonl", "/var/lib/claudew/STOP", "/var/lib/claudew/queue/incoming/x.json",
+			"/var/lib/claudew/ledger.jsonl", "/var/lib/claudew/stop/STOP", "/var/lib/claudew/queue/incoming/x.json",
 			"/var/lib/claudew/runs/x/transcript.jsonl", "/var/lib/claudew/cache/gomod/x",
 			job + "/githome/.gitconfig", job + "/context/svc/README.md", job + "/files/archguard.json", "/etc/claudew/config.json",
 		} {
@@ -362,5 +362,23 @@ func TestBuiltinToolsAreTheBaseNamesOfTheRules(t *testing.T) {
 	got := BuiltinTools([]string{"Read", "Edit(./**)", "Write(./**)", "Bash(make gates)", "Bash(git diff)", "Grep"})
 	if !slices.Equal(got, []string{"Read", "Edit", "Write", "Bash", "Grep"}) {
 		t.Errorf("BuiltinTools = %v", got)
+	}
+}
+
+// Claude Code's shell sandbox enforces a write deny on a file that does not
+// exist by creating it, empty, for as long as each shell command runs
+// (measured on the host 2026-10-30, run 20261030T172344Z-stopprobe: an
+// empty /var/lib/claudew/STOP appeared during `sleep 8`). The worker reads
+// that very file as a stop, so a pilot was cancelled mid-run. A deny on the
+// worker's own state names a directory or a pattern, never a single file.
+func TestDenyNamesNoSingleFileTheSandboxWouldCreate(t *testing.T) {
+	for _, r := range Deny {
+		tool, rest, ok := strings.Cut(r, "(//")
+		if !ok || (tool != "Edit" && tool != "Write") {
+			continue
+		}
+		if !strings.Contains(rest, "*") {
+			t.Errorf("%s names a single file; the sandbox would create it while a shell command runs", r)
+		}
 	}
 }
