@@ -21,6 +21,18 @@ type mutant struct {
 }
 
 var mutants = []mutant{
+	{"the egress filter judges by a negated match", "deploy/claudew-egress.nft",
+		`meta skuid { "claudew", "claudew-gh" } jump workers`, `meta skuid != { "claudew", "claudew-gh" } jump workers`},
+	{"the workers reach the router on any port", "deploy/claudew-egress.nft",
+		"ip daddr $dns meta l4proto { tcp, udp } th dport 53 accept", "ip daddr $dns accept"},
+	{"the workers reach the internet on any port", "deploy/claudew-egress.nft",
+		"meta l4proto tcp th dport 443 accept", "meta l4proto tcp accept"},
+	{"the egress filter replaces the whole ruleset", "deploy/claudew-egress.nft",
+		"table inet claudew\ndelete table inet claudew\n", "flush ruleset\n"},
+	{"the installer does not start the egress filter", "deploy/install.sh",
+		"systemctl enable --now claudew-egress.service", "true"},
+	{"context clones lose their tags", "cmd/claudew/main.go",
+		`return []string{"clone", "-q", "--single-branch"}`, `return []string{"clone", "-q", "--no-tags", "--single-branch"}`},
 	{"a deny names the auto stop file itself again", "internal/agent/agent.go",
 		`"Edit(//var/lib/claudew/stop/**)", "Write(//var/lib/claudew/stop/**)",`, `"Edit(//var/lib/claudew/STOP)", "Write(//var/lib/claudew/STOP)",`},
 	{"the auto stop sits directly in the state directory", "internal/drain/drain.go",

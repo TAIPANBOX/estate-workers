@@ -227,12 +227,8 @@ func production(cfg config.Config, tpls map[string]template.Template) drain.Deps
 	_ = os.MkdirAll(githome, 0o750)
 	clone := func(ctx context.Context, repo, gitDir, work string) error {
 		g := gitx.Git{Bin: git, Dir: filepath.Dir(work), Home: githome}
-		args := []string{"clone", "-q", "--no-tags", "--single-branch"}
-		if gitDir != "" {
-			args = append(args, "--separate-git-dir", gitDir)
-		}
 		_ = os.Remove(work)
-		_, err := g.Run(ctx, append(args, "https://github.com/"+cfg.Owner+"/"+repo+".git", work)...)
+		_, err := g.Run(ctx, append(cloneArgs(gitDir), "https://github.com/"+cfg.Owner+"/"+repo+".git", work)...)
 		return err
 	}
 	return drain.Deps{
@@ -385,4 +381,15 @@ func systemdListener() (net.Listener, error) {
 		return nil, fmt.Errorf("want exactly one socket from systemd, got LISTEN_FDS=%q", os.Getenv("LISTEN_FDS"))
 	}
 	return net.FileListener(os.NewFile(3, "push.sock"))
+}
+
+// cloneArgs is the git clone command line before the URL and directory.
+// The work repository (a separate git dir) is pushed and takes no tags; a
+// context repository keeps the tags on its branch, so the model can read
+// which commit a release points at.
+func cloneArgs(gitDir string) []string {
+	if gitDir == "" {
+		return []string{"clone", "-q", "--single-branch"}
+	}
+	return []string{"clone", "-q", "--no-tags", "--single-branch", "--separate-git-dir", gitDir}
 }

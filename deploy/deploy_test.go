@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -155,4 +156,118 @@ func aptPackages(t *testing.T, install string) map[string]bool {
 		pkgs[strings.Trim(strings.SplitN(f, "=", 2)[0], `"`)] = true
 	}
 	return pkgs
+}
+
+// The egress filter is a table of its own: Docker, Incus and Tailscale
+// keep theirs, so it never flushes the ruleset, and a reload replaces only
+// this table in one transaction.
+func TestEgressFilterOwnsOneTableAndNeverFlushes(t *testing.T) {
+	nft := read(t, "claudew-egress.nft")
+	if strings.Contains(nft, "flush") {
+		t.Error("claudew-egress.nft flushes something")
+	}
+	for _, line := range strings.Split(nft, "\n") {
+		if f := strings.Fields(line); len(f) >= 3 && (f[0] == "table" || f[1] == "table") {
+			if !strings.Contains(line, "table inet claudew") {
+				t.Errorf("touches another table: %q", line)
+			}
+		}
+	}
+	if !strings.Contains(nft, "\ntable inet claudew\ndelete table inet claudew\n") {
+		t.Error("a reload does not replace the table in one transaction")
+	}
+	unit := read(t, "systemd/claudew-egress.service")
+	for _, want := range []string{"\nExecStart=/usr/sbin/nft -f /etc/claudew/egress.nft\n",
+		"\nExecStop=/usr/sbin/nft delete table inet claudew\n", "\nRemainAfterExit=yes\n", "\nWantedBy=multi-user.target\n"} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("claudew-egress.service lacks %q", strings.TrimSpace(want))
+		}
+	}
+}
+
+// Only packets the two worker users send are judged, by a positive match.
+// A negated match (skuid != workers accept, then drops) lets packets with
+// no full socket, such as the SYN-ACK of the host's own sshd, fall through
+// to the drops and cut the host off its own network.
+func TestEgressJudgesOnlyTheWorkersByAPositiveMatch(t *testing.T) {
+	nft := read(t, "claudew-egress.nft")
+	if strings.Contains(nft, "!=") {
+		t.Error("claudew-egress.nft negates a match")
+	}
+	if got := chainRules(t, nft, "output"); !slices.Equal(got, []string{
+		"type filter hook output priority filter; policy accept;",
+		`meta skuid { "claudew", "claudew-gh" } jump workers`,
+	}) {
+		t.Errorf("output chain is %q", got)
+	}
+}
+
+// The workers reach the router only for DNS, no other private or
+// link-local address, and the internet only over HTTPS. The router is the
+// same address the units' IPAddressAllow names.
+func TestEgressAllowsOnlyDNSToTheRouterAndHTTPSOut(t *testing.T) {
+	nft := read(t, "claudew-egress.nft")
+	if got := chainRules(t, nft, "workers"); !slices.Equal(got, []string{
+		`oifname "lo" accept`,
+		"ip daddr $dns meta l4proto { tcp, udp } th dport 53 accept",
+		"ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, 224.0.0.0/4, 255.255.255.255 } counter drop",
+		"ip6 daddr { fc00::/7, fe80::/10, ff00::/8 } counter drop",
+		"meta l4proto tcp th dport 443 accept",
+		"counter drop",
+	}) {
+		t.Errorf("workers chain is %q", got)
+	}
+	m := regexp.MustCompile(`(?m)^define dns = (\S+)$`).FindStringSubmatch(nft)
+	if m == nil {
+		t.Fatal("claudew-egress.nft defines no dns")
+	}
+	for _, u := range []string{"systemd/claudew.service", "systemd/claudew-push.service"} {
+		if !strings.Contains(read(t, u), "\nIPAddressAllow="+m[1]+"/32 ") {
+			t.Errorf("%s does not allow the router %s that the egress filter names", u, m[1])
+		}
+	}
+}
+
+// The workers never run without the filter: both services require it and
+// start after it, and the installer and uninstaller handle it.
+func TestWorkerServicesRequireTheEgressFilter(t *testing.T) {
+	for _, u := range []string{"systemd/claudew.service", "systemd/claudew-push.service"} {
+		unit := read(t, u)
+		for _, want := range []string{"\nRequires=claudew-egress.service\n", "claudew-egress.service"} {
+			if !strings.Contains(unit, want) {
+				t.Errorf("%s lacks %q", u, strings.TrimSpace(want))
+			}
+		}
+		if !regexp.MustCompile(`(?m)^After=.*\bclaudew-egress\.service\b`).MatchString(unit) {
+			t.Errorf("%s does not start after the egress filter", u)
+		}
+	}
+	install := read(t, "install.sh")
+	for _, want := range []string{"install -m 0644 -o root -g root \"$HERE/claudew-egress.nft\" /etc/claudew/egress.nft",
+		"systemctl enable --now claudew-egress.service"} {
+		if !strings.Contains(install, want) {
+			t.Errorf("install.sh lacks %q", want)
+		}
+	}
+	if !strings.Contains(read(t, "uninstall.sh"), "systemctl disable --now claudew-egress.service") {
+		t.Error("uninstall.sh leaves the egress filter running")
+	}
+}
+
+// chainRules returns the trimmed, non-comment lines of one chain.
+func chainRules(t *testing.T, nft, chain string) []string {
+	t.Helper()
+	start := strings.Index(nft, "\tchain "+chain+" {\n")
+	if start < 0 {
+		t.Fatalf("no chain %s", chain)
+	}
+	body := nft[start+len("\tchain "+chain+" {\n"):]
+	body = body[:strings.Index(body, "\n\t}")]
+	var rules []string
+	for _, l := range strings.Split(body, "\n") {
+		if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
+			rules = append(rules, l)
+		}
+	}
+	return rules
 }

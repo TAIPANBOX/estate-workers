@@ -7,8 +7,10 @@ set -euo pipefail
 
 systemctl disable --now claudew.timer claudew-push.socket 2>/dev/null || true
 systemctl stop claudew.service claudew-push.service 2>/dev/null || true
+systemctl disable --now claudew-egress.service 2>/dev/null || true
 rm -f /etc/systemd/system/claudew.service /etc/systemd/system/claudew.timer \
-      /etc/systemd/system/claudew-push.socket /etc/systemd/system/claudew-push.service
+      /etc/systemd/system/claudew-push.socket /etc/systemd/system/claudew-push.service \
+      /etc/systemd/system/claudew-egress.service
 systemctl daemon-reload
 
 rm -f /etc/credstore.encrypted/anthropic-workers.cred /etc/credstore.encrypted/github-app-workers.cred
@@ -24,7 +26,8 @@ getent passwd claudew >/dev/null && userdel claudew
 getent group claudew-gh >/dev/null && groupdel claudew-gh
 getent group claudew >/dev/null && groupdel claudew
 
-apt-get purge -y -q claude-code bubblewrap socat
+apt-get purge -y -q claude-code bubblewrap socat make gcc
+apt-get autoremove -y -q
 rm -f /etc/apt/sources.list.d/claude-code.list /etc/apt/keyrings/claude-code.asc
 apt-get update -q
 rm -rf /usr/local/go

@@ -206,3 +206,18 @@ Feature: Estate workers spend the monthly API credits, not the weekly plan limit
     Then no file the worker reads as a stop appears, because the stop file lives in a denied directory that already exists
     And a stop written by the worker still lands even if that directory was missing
     # test: TestDenyNamesNoSingleFileTheSandboxWouldCreate, TestAutoStopLivesInADeniedDirectoryThatExistsBeforeAnyRun, TestWriteCreatesAMissingStopDirectory
+
+  Scenario: The workers reach the router only for DNS and the internet only over HTTPS
+    Given the two worker users on the host
+    When either sends a packet
+    Then it may reach the router on port 53, the loopback, and any public address on port 443, and nothing else
+    And only their packets are judged, so the host's own services keep their network
+    And the filter is a table of its own that leaves Docker's, Incus's and Tailscale's alone
+    And neither worker service runs without it
+    # test: TestEgressFilterOwnsOneTableAndNeverFlushes, TestEgressJudgesOnlyTheWorkersByAPositiveMatch, TestEgressAllowsOnlyDNSToTheRouterAndHTTPSOut, TestWorkerServicesRequireTheEgressFilter
+
+  Scenario: The model can see which commit a release tag points at
+    Given a service repository given to the model as context
+    When the model looks for its release tags
+    Then the context clone carries the tags on its branch, and the pushed work clone carries none
+    # test: TestContextClonesCarryTagsAndTheWorkCloneDoesNot

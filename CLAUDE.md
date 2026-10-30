@@ -60,6 +60,10 @@ Process and invariants only. English throughout, no long dashes.
     auto stop lives in a denied directory and no deny names a single file.
     *(tests: `TestDenyNamesNoSingleFileTheSandboxWouldCreate`,
     `TestAutoStopLivesInADeniedDirectoryThatExistsBeforeAnyRun`)*
+16. **The worker users reach the router only on port 53 and the internet
+    only on 443**, by a positive match in a table of their own that never
+    touches another table, and neither service runs without it.
+    *(tests: `TestEgress*`, `TestWorkerServicesRequireTheEgressFilter`; mutants "the egress filter ...")*
 
 ## Escalate, do not push through
 

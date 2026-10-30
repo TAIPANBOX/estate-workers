@@ -1,0 +1,34 @@
+#!/usr/sbin/nft -f
+# Egress of the workers' two users, claudew and claudew-gh, in a table of
+# their own. Loaded by claudew-egress.service into /etc/claudew/egress.nft.
+# It leaves every other table alone: Docker, Incus and Tailscale keep their own
+# tables. Rollback: systemctl disable --now claudew-egress.service, which
+# deletes this table and stops the workers, since both services require it.
+
+# The router, the host's DNS server.
+define dns = 192.168.1.1
+
+# Create the table if it is missing, then delete it, so loading this file
+# replaces the table in one transaction.
+table inet claudew
+delete table inet claudew
+
+table inet claudew {
+	# Only packets the worker users send are judged, by a positive match.
+	# A negated match would let packets with no full socket, such as the
+	# SYN-ACK of the host's own sshd, fall through to the drops below.
+	chain output {
+		type filter hook output priority filter; policy accept;
+		meta skuid { "claudew", "claudew-gh" } jump workers
+	}
+
+	# DNS to the router, nothing else private or link-local, HTTPS out.
+	chain workers {
+		oifname "lo" accept
+		ip daddr $dns meta l4proto { tcp, udp } th dport 53 accept
+		ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, 224.0.0.0/4, 255.255.255.255 } counter drop
+		ip6 daddr { fc00::/7, fe80::/10, ff00::/8 } counter drop
+		meta l4proto tcp th dport 443 accept
+		counter drop
+	}
+}
