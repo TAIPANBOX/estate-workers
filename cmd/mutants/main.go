@@ -21,6 +21,10 @@ type mutant struct {
 }
 
 var mutants = []mutant{
+	{"a resume does not reset the failure count", "internal/ledger/ledger.go",
+		"case OutcomeOK, OutcomeNoChange, OutcomeResumed:", "case OutcomeOK, OutcomeNoChange:"},
+	{"the resume command writes no ledger line", "cmd/claudew/main.go",
+		"err = ledger.Append(l.Ledger(), ledger.Entry{", "_ = (ledger.Entry{"},
 	{"sandbox placeholders reach the diff", "internal/drain/drain.go",
 		"if err := dropSandboxPlaceholders(ctx, g, work); err != nil {", "if err := error(nil); err != nil {"},
 	{"every new file counts as a placeholder", "internal/drain/drain.go",

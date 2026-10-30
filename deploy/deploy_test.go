@@ -101,3 +101,12 @@ func TestPushSocketIsReachableByTheDrainServiceOnly(t *testing.T) {
 		t.Error("the drain service no longer runs as claudew, the socket's group")
 	}
 }
+
+// A bundle the push service exports gets the creating user's primary group
+// unless the directory is setgid, and the drain service then cannot read it
+// (measured on the host 2026-10-30: "could not open ... .bundle").
+func TestExportedBundlesAreReadableByTheDrainService(t *testing.T) {
+	if !strings.Contains(read(t, "install.sh"), "\ninstall -d -m 2750 -o claudew-gh -g claudew /var/lib/claudew-gh/export\n") {
+		t.Error("install.sh does not make the export directory setgid claudew")
+	}
+}

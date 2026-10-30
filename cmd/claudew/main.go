@@ -116,7 +116,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintln(stdout, "stopped; a running model gets SIGINT within a few seconds")
 	case "resume":
-		if err := stop.Clear(cfg.Paths.ManualStop, drain.Layout{State: cfg.Paths.State}.AutoStop()); err != nil {
+		l := drain.Layout{State: cfg.Paths.State}
+		if err := stop.Clear(cfg.Paths.ManualStop, l.AutoStop()); err != nil {
+			fmt.Fprintln(stderr, "claudew resume:", err)
+			return 1
+		}
+		// The failure count is read from the ledger, so clearing the stop
+		// files alone would stop the next run again.
+		id, err := task.NewID(time.Now(), rand.Reader)
+		if err == nil {
+			err = ledger.Append(l.Ledger(), ledger.Entry{ID: id, Outcome: ledger.OutcomeResumed, Note: "a person resumed the workers", At: time.Now().UTC()})
+		}
+		if err != nil {
 			fmt.Fprintln(stderr, "claudew resume:", err)
 			return 1
 		}

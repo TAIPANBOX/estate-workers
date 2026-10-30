@@ -2,6 +2,10 @@ package main
 
 import (
 	"bytes"
+	"fmt"
+	"github.com/TAIPANBOX/estate-workers/internal/config"
+	"github.com/TAIPANBOX/estate-workers/internal/drain"
+	"github.com/TAIPANBOX/estate-workers/internal/ledger"
 	"os"
 	"path/filepath"
 	"strings"
@@ -121,5 +125,38 @@ func TestManagedSettingsPrintsJSON(t *testing.T) {
 	var out, errb bytes.Buffer
 	if code := run([]string{"-config", testConfig(t), "managed-settings"}, &out, &errb); code != 0 || !strings.Contains(out.String(), `"disableBypassPermissionsMode": "disable"`) {
 		t.Errorf("exit %d out %.200s err %s", code, out.String(), errb.String())
+	}
+}
+
+// Three failures stop the workers; resume must let them run again, which
+// needs the failure count reset as well as the stop files cleared.
+func TestResumeAfterRepeatedFailuresLetsTheWorkersRunAgain(t *testing.T) {
+	p := testConfig(t)
+	var out, errb bytes.Buffer
+	if code := run([]string{"-config", p, "enqueue", "dossier-bump", "repo=architecture", "service=qryx"}, &out, &errb); code != 0 {
+		t.Fatalf("enqueue exit %d: %s", code, errb.String())
+	}
+	cfg, err := config.Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	led := drain.Layout{State: cfg.Paths.State}.Ledger()
+	for i := 0; i < 3; i++ {
+		if err := ledger.Append(led, ledger.Entry{ID: fmt.Sprintf("e%d", i), Outcome: ledger.OutcomeError, At: time.Now().UTC()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out.Reset()
+	run([]string{"-config", p, "status"}, &out, &errb)
+	if !strings.Contains(out.String(), "consecutive failures: 3") {
+		t.Fatalf("status before resume:\n%s", out.String())
+	}
+	if code := run([]string{"-config", p, "resume"}, &out, &errb); code != 0 {
+		t.Fatalf("resume exit %d: %s", code, errb.String())
+	}
+	out.Reset()
+	run([]string{"-config", p, "status"}, &out, &errb)
+	if !strings.Contains(out.String(), "consecutive failures: 0") || !strings.Contains(out.String(), "untrusted ledger lines: 0") {
+		t.Errorf("status after resume:\n%s", out.String())
 	}
 }

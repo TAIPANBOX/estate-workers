@@ -71,7 +71,8 @@ install -d -m 0750 -o claudew -g claudew /var/lib/claudew
 install -d -m 0750 -o claudew -g claudew /var/lib/claudew/runs
 install -d -m 0750 -o claudew-gh -g claudew /var/lib/claudew-gh
 install -d -m 0700 -o claudew-gh -g claudew-gh /var/lib/claudew-gh/cache /var/lib/claudew-gh/home
-install -d -m 0750 -o claudew-gh -g claudew /var/lib/claudew-gh/export
+# setgid, so each bundle gets group claudew and the drain service can read it.
+install -d -m 2750 -o claudew-gh -g claudew /var/lib/claudew-gh/export
 install -d -m 0755 -o root -g root /etc/claudew /opt/claudew/bin /etc/claude-code
 install -m 0644 -o claudew -g claudew /dev/null /var/lib/prometheus/node-exporter/claudew.prom
 
