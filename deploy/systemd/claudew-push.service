@@ -1,7 +1,8 @@
 [Unit]
 Description=estate workers: push service, the only holder of the GitHub App key
 Requires=claudew-push.socket
-After=claudew-push.socket network-online.target
+Requires=claudew-egress.service
+After=claudew-push.socket network-online.target claudew-egress.service
 
 [Service]
 Type=simple

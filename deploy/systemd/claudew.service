@@ -1,7 +1,8 @@
 [Unit]
 Description=estate workers: run at most one queued task
 Wants=network-online.target claudew-push.socket
-After=network-online.target claudew-push.socket
+Requires=claudew-egress.service
+After=network-online.target claudew-push.socket claudew-egress.service
 ConditionPathExists=!/etc/claudew/STOP
 
 [Service]

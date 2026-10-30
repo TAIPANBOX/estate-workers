@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -175,5 +176,23 @@ func TestSystemdListenerNeedsExactlyOneSocket(t *testing.T) {
 func TestGitBinDefaults(t *testing.T) {
 	if gitBin(config.Config{}) != "/usr/bin/git" || gitBin(config.Config{Paths: config.Paths{Git: "/opt/git"}}) != "/opt/git" {
 		t.Error("gitBin")
+	}
+}
+
+// A context repository is cloned with the tags on its branch, so the model
+// can see which commit a release tag points at; the pilot's dossier had to
+// call that an inference because the clone had none (2026-10-30). The work
+// repository, which is pushed, carries no tags.
+func TestContextClonesCarryTagsAndTheWorkCloneDoesNot(t *testing.T) {
+	ctxArgs := cloneArgs("")
+	if slices.Contains(ctxArgs, "--no-tags") {
+		t.Errorf("context clone %v drops tags", ctxArgs)
+	}
+	if !slices.Contains(ctxArgs, "--single-branch") {
+		t.Errorf("context clone %v takes every branch", ctxArgs)
+	}
+	work := cloneArgs("/var/lib/claudew/runs/x/git")
+	if !slices.Contains(work, "--no-tags") || !slices.Contains(work, "--separate-git-dir") {
+		t.Errorf("work clone %v", work)
 	}
 }

@@ -50,7 +50,8 @@ echo "deb [signed-by=/etc/apt/keyrings/claude-code.asc] https://downloads.claude
   > /etc/apt/sources.list.d/claude-code.list
 apt-get update -q
 # make: the templates' gates start it (dossier-bump runs `make gates`).
-apt-get install -y -q "claude-code=$CLAUDE_VERSION" bubblewrap socat make
+# gcc: Go's -race in the repositories' gates needs cgo.
+apt-get install -y -q "claude-code=$CLAUDE_VERSION" bubblewrap socat make gcc
 
 echo "== Go $GO_VERSION"
 if [ ! -x /usr/local/go/bin/go ] || ! /usr/local/go/bin/go version | grep -q "go$GO_VERSION "; then
@@ -87,11 +88,16 @@ echo "== config and Claude Code policy"
 /opt/claudew/bin/claudew -config /etc/claudew/config.json managed-settings > "$BACKUP/managed-settings.json"
 install -m 0644 -o root -g root "$BACKUP/managed-settings.json" /etc/claude-code/managed-settings.json
 
+echo "== egress filter: DNS to the router and HTTPS out, nothing else, for the worker users"
+install -m 0644 -o root -g root "$HERE/claudew-egress.nft" /etc/claudew/egress.nft
+/usr/sbin/nft -c -f /etc/claudew/egress.nft
+
 echo "== units (timer installed, not enabled)"
-for u in claudew.service claudew.timer claudew-push.socket claudew-push.service; do
+for u in claudew-egress.service claudew.service claudew.timer claudew-push.socket claudew-push.service; do
   install -m 0644 -o root -g root "$HERE/systemd/$u" "/etc/systemd/system/$u"
 done
 systemctl daemon-reload
+systemctl enable --now claudew-egress.service
 systemctl enable --now claudew-push.socket
 
 echo "== done. Next: credentials with deploy/put-credential.sh, then the checks."
