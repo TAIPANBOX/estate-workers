@@ -382,3 +382,22 @@ func TestDenyNamesNoSingleFileTheSandboxWouldCreate(t *testing.T) {
 		}
 	}
 }
+
+// With no bridge the run's environment carries no proxy; with one, HTTPS
+// goes through it and loopback stays direct.
+func TestProxyEnvSendsOnlyHTTPSThroughTheBridge(t *testing.T) {
+	if ProxyEnv("") != nil {
+		t.Error("proxy variables with no bridge")
+	}
+	got := ProxyEnv("http://127.0.0.1:41999")
+	for _, want := range []string{"HTTPS_PROXY=http://127.0.0.1:41999", "https_proxy=http://127.0.0.1:41999", "NO_PROXY=localhost,127.0.0.1,::1"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("ProxyEnv lacks %s: %v", want, got)
+		}
+	}
+	for _, kv := range got {
+		if strings.HasPrefix(strings.ToUpper(kv), "HTTP_PROXY=") || strings.HasPrefix(strings.ToUpper(kv), "ALL_PROXY=") {
+			t.Errorf("plain HTTP or every protocol goes through the bridge: %s", kv)
+		}
+	}
+}

@@ -123,6 +123,16 @@ func Env(key, home, tmp, goRoot string) []string {
 	}
 }
 
+// ProxyEnv sends the run's HTTPS through the egress bridge, when there is
+// one; loopback stays direct.
+func ProxyEnv(proxyURL string) []string {
+	if proxyURL == "" {
+		return nil
+	}
+	return []string{"HTTPS_PROXY=" + proxyURL, "https_proxy=" + proxyURL,
+		"NO_PROXY=localhost,127.0.0.1,::1", "no_proxy=localhost,127.0.0.1,::1"}
+}
+
 type settings struct {
 	Permissions struct {
 		Allow       []string `json:"allow"`

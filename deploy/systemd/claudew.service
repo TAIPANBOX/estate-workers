@@ -1,8 +1,8 @@
 [Unit]
 Description=estate workers: run at most one queued task
-Wants=network-online.target claudew-push.socket
+Wants=network-online.target claudew-push.socket claudew-proxy.socket
 Requires=claudew-egress.service
-After=network-online.target claudew-push.socket claudew-egress.service
+After=network-online.target claudew-push.socket claudew-proxy.socket claudew-egress.service
 ConditionPathExists=!/etc/claudew/STOP
 
 [Service]
@@ -45,10 +45,13 @@ ReadOnlyPaths=/etc/claudew
 # not need containerd, so it sees an empty directory there.
 TemporaryFileSystem=/run/containerd:ro
 
-# The house network, the tailnet and link-local are out of reach; only the
-# router's DNS and loopback (the sandbox proxy) are allowed.
-IPAddressDeny=10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 fc00::/7 fe80::/10
-IPAddressAllow=192.168.1.1/32 localhost
+# A network namespace of its own with nothing but loopback: none of the
+# host's services on 127.0.0.1 or ::1 is in it. The one door out is the
+# egress proxy's unix socket (/run/claudew-proxy/proxy.sock), which a
+# bridge in this process turns into HTTPS_PROXY for git, Go and claude.
+PrivateNetwork=yes
+IPAddressDeny=any
+IPAddressAllow=localhost
 
 CPUQuota=200%
 MemoryMax=4G

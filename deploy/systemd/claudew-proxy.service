@@ -1,0 +1,42 @@
+[Unit]
+Description=estate workers: egress proxy, CONNECT to allowlisted hosts on 443 only
+Requires=claudew-proxy.socket
+Requires=claudew-egress.service
+After=claudew-proxy.socket claudew-egress.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=claudew-proxy
+Group=claudew-proxy
+ExecStart=/opt/claudew/bin/claudew -config /etc/claudew/config.json proxy-serve
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/etc/claudew
+
+# DNS to the router; no loopback, house network, tailnet or link-local.
+# The proxy refuses any name that resolves there, and nftables drops it too.
+IPAddressDeny=10.0.0.0/8 127.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 ::1/128 fc00::/7 fe80::/10
+IPAddressAllow=192.168.1.1/32
+
+MemoryMax=256M
+TasksMax=128

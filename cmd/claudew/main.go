@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -24,6 +25,7 @@ import (
 	"github.com/TAIPANBOX/estate-workers/internal/agent"
 	"github.com/TAIPANBOX/estate-workers/internal/config"
 	"github.com/TAIPANBOX/estate-workers/internal/drain"
+	"github.com/TAIPANBOX/estate-workers/internal/egress"
 	"github.com/TAIPANBOX/estate-workers/internal/gates"
 	"github.com/TAIPANBOX/estate-workers/internal/github"
 	"github.com/TAIPANBOX/estate-workers/internal/gitx"
@@ -93,7 +95,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintln(stdout, t.ID)
 	case "drain":
-		rep, err := drain.Once(ctx, production(cfg, tpls))
+		// Inside its own network namespace the drain service reaches out
+		// only through the egress proxy; the bridge is its loopback door.
+		proxyURL := ""
+		if cfg.Paths.ProxySocket != "" {
+			if proxyURL, err = egress.StartBridge(ctx, cfg.Paths.ProxySocket); err != nil {
+				fmt.Fprintln(stderr, "claudew drain: proxy bridge:", err)
+				return 1
+			}
+		}
+		rep, err := drain.Once(ctx, production(cfg, tpls, proxyURL))
 		out, _ := json.Marshal(rep)
 		fmt.Fprintln(stdout, string(out))
 		if err != nil {
@@ -139,6 +150,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		fmt.Fprintln(stdout, string(data))
+	case "proxy-serve":
+		l, err := systemdListener()
+		if err == nil {
+			p := egress.Proxy{Allow: egress.Allow, Log: stderr,
+				Resolve: func(ctx context.Context, host string) ([]netip.Addr, error) {
+					return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+				},
+				Dial: (&net.Dialer{Timeout: 10 * time.Second}).DialContext}
+			go func() { <-ctx.Done(); l.Close() }()
+			err = p.Serve(l)
+			if ctx.Err() != nil {
+				err = nil
+			}
+		}
+		if err != nil {
+			fmt.Fprintln(stderr, "claudew proxy-serve:", err)
+			return 1
+		}
 	case "push-serve":
 		if err := pushServe(ctx, cfg, tpls); err != nil {
 			fmt.Fprintln(stderr, "claudew push-serve:", err)
@@ -219,14 +248,14 @@ func gitBin(cfg config.Config) string {
 	return "/usr/bin/git"
 }
 
-func production(cfg config.Config, tpls map[string]template.Template) drain.Deps {
+func production(cfg config.Config, tpls map[string]template.Template, proxyURL string) drain.Deps {
 	git := gitBin(cfg)
 	modCache := filepath.Join(cfg.Paths.State, "cache", "gomod")
 	githome := filepath.Join(cfg.Paths.State, "cache", "githome")
 	_ = os.MkdirAll(modCache, 0o750)
 	_ = os.MkdirAll(githome, 0o750)
 	clone := func(ctx context.Context, repo, gitDir, work string) error {
-		g := gitx.Git{Bin: git, Dir: filepath.Dir(work), Home: githome}
+		g := gitx.Git{Bin: git, Dir: filepath.Dir(work), Home: githome, Config: proxyConfig(proxyURL)}
 		_ = os.Remove(work)
 		_, err := g.Run(ctx, append(cloneArgs(gitDir), "https://github.com/"+cfg.Owner+"/"+repo+".git", work)...)
 		return err
@@ -234,6 +263,7 @@ func production(cfg config.Config, tpls map[string]template.Template) drain.Deps
 	return drain.Deps{
 		Cfg: cfg, Templates: tpls, Now: time.Now, GitBin: git,
 		ClaudeBin: cfg.Paths.Claude, GoRoot: cfg.Paths.GoRoot, GoModCache: modCache, StopPoll: 2 * time.Second,
+		ProxyURL: proxyURL,
 		Clone: func(ctx context.Context, r task.Resolved, gitDir, work string) error {
 			if !cfg.IsPrivate(r.Repo) {
 				return clone(ctx, r.Repo, gitDir, work)
@@ -262,9 +292,9 @@ func production(cfg config.Config, tpls map[string]template.Template) drain.Deps
 			}
 			cmd := exec.CommandContext(ctx, filepath.Join(cfg.Paths.GoRoot, "bin", "go"), "mod", "download")
 			cmd.Dir = work
-			cmd.Env = []string{"PATH=" + cfg.Paths.GoRoot + "/bin:/usr/bin:/bin", "HOME=" + githome,
+			cmd.Env = append([]string{"PATH=" + cfg.Paths.GoRoot + "/bin:/usr/bin:/bin", "HOME=" + githome,
 				"GOMODCACHE=" + modCache, "GOFLAGS=-mod=mod", "GOTOOLCHAIN=local", "GOPROXY=https://proxy.golang.org",
-				"GOCACHE=" + filepath.Join(githome, "gocache")}
+				"GOCACHE=" + filepath.Join(githome, "gocache")}, agent.ProxyEnv(proxyURL)...)
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				return fmt.Errorf("go mod download: %w: %.500s", err, out)
@@ -380,7 +410,7 @@ func systemdListener() (net.Listener, error) {
 	if n, _ := strconv.Atoi(os.Getenv("LISTEN_FDS")); n != 1 {
 		return nil, fmt.Errorf("want exactly one socket from systemd, got LISTEN_FDS=%q", os.Getenv("LISTEN_FDS"))
 	}
-	return net.FileListener(os.NewFile(3, "push.sock"))
+	return net.FileListener(os.NewFile(3, "systemd-socket"))
 }
 
 // cloneArgs is the git clone command line before the URL and directory.
@@ -392,4 +422,12 @@ func cloneArgs(gitDir string) []string {
 		return []string{"clone", "-q", "--single-branch"}
 	}
 	return []string{"clone", "-q", "--no-tags", "--single-branch", "--separate-git-dir", gitDir}
+}
+
+// proxyConfig points git's https at the egress bridge, when there is one.
+func proxyConfig(proxyURL string) [][2]string {
+	if proxyURL == "" {
+		return nil
+	}
+	return [][2]string{{"http.proxy", proxyURL}}
 }

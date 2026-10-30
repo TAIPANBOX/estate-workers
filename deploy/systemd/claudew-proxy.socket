@@ -1,0 +1,15 @@
+[Unit]
+Description=estate workers: egress proxy socket, the drain service's only way out
+
+[Socket]
+ListenStream=/run/claudew-proxy/proxy.sock
+SocketUser=claudew-proxy
+SocketGroup=claudew
+SocketMode=0660
+# systemd makes the directory as root; it must be traversable for the
+# drain service to reach the socket, whose own mode decides who connects.
+DirectoryMode=0755
+Accept=no
+
+[Install]
+WantedBy=sockets.target
