@@ -21,6 +21,8 @@ type mutant struct {
 }
 
 var mutants = []mutant{
+	{"the workers reach the host's own addresses through loopback", "deploy/claudew-egress.nft",
+		"ip daddr 127.0.0.0/8 accept", `oifname "lo" accept`},
 	{"the egress filter judges by a negated match", "deploy/claudew-egress.nft",
 		`meta skuid { "claudew", "claudew-gh" } jump workers`, `meta skuid != { "claudew", "claudew-gh" } jump workers`},
 	{"the workers reach the router on any port", "deploy/claudew-egress.nft",

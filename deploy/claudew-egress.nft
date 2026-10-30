@@ -22,9 +22,12 @@ table inet claudew {
 		meta skuid { "claudew", "claudew-gh" } jump workers
 	}
 
-	# DNS to the router, nothing else private or link-local, HTTPS out.
+	# Loopback addresses only (a packet to the host's own LAN address also
+	# leaves through lo), DNS to the router, nothing else private or
+	# link-local, HTTPS out.
 	chain workers {
-		oifname "lo" accept
+		ip daddr 127.0.0.0/8 accept
+		ip6 daddr ::1 accept
 		ip daddr $dns meta l4proto { tcp, udp } th dport 53 accept
 		ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, 224.0.0.0/4, 255.255.255.255 } counter drop
 		ip6 daddr { fc00::/7, fe80::/10, ff00::/8 } counter drop

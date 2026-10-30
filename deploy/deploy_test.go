@@ -204,11 +204,15 @@ func TestEgressJudgesOnlyTheWorkersByAPositiveMatch(t *testing.T) {
 
 // The workers reach the router only for DNS, no other private or
 // link-local address, and the internet only over HTTPS. The router is the
-// same address the units' IPAddressAllow names.
+// same address the units' IPAddressAllow names. Loopback means the loopback
+// addresses: a packet to the host's own LAN address also leaves through lo,
+// and an `oifname "lo" accept` let claudew reach the host's node exporter
+// on 192.168.1.10:9100 (measured on the host 2026-10-30).
 func TestEgressAllowsOnlyDNSToTheRouterAndHTTPSOut(t *testing.T) {
 	nft := read(t, "claudew-egress.nft")
 	if got := chainRules(t, nft, "workers"); !slices.Equal(got, []string{
-		`oifname "lo" accept`,
+		"ip daddr 127.0.0.0/8 accept",
+		"ip6 daddr ::1 accept",
 		"ip daddr $dns meta l4proto { tcp, udp } th dport 53 accept",
 		"ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, 224.0.0.0/4, 255.255.255.255 } counter drop",
 		"ip6 daddr { fc00::/7, fe80::/10, ff00::/8 } counter drop",
