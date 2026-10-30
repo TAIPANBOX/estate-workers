@@ -15,6 +15,7 @@ import (
 
 	"github.com/TAIPANBOX/estate-workers/internal/agent"
 	"github.com/TAIPANBOX/estate-workers/internal/config"
+	"github.com/TAIPANBOX/estate-workers/internal/drain"
 	"github.com/TAIPANBOX/estate-workers/internal/task"
 	"github.com/TAIPANBOX/estate-workers/internal/template"
 )
@@ -128,7 +129,7 @@ func TestGatesGoThroughTheConfiguredBwrap(t *testing.T) {
 	cfg, tpls, dir := prodConfig(t)
 	d := production(cfg, tpls)
 	var log bytes.Buffer
-	if err := d.Gates(bg, dir, dir, [][]string{{"/bin/sh", "-c", "echo gate-ok"}}, &log); err != nil {
+	if err := d.Gates(bg, drain.GateRun{Tree: dir, Cmds: [][]string{{"/bin/sh", "-c", "echo gate-ok"}}}, &log); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(log.String(), "gate-ok") {

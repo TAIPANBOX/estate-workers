@@ -63,7 +63,7 @@ func TestReadCredentialNeedsSystemd(t *testing.T) {
 func testConfig(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	cfg := `{"owner":"TAIPANBOX","repos":["architecture","qryx"],"private_repos":["architecture"],
+	cfg := `{"owner":"TAIPANBOX","repos":["architecture","estate-gates","qryx"],"private_repos":["architecture"],
 "day_cap_usd":6,"month_cap_usd":80,"unverified_cap_usd":0.1,
 "run_cap_usd":{"claude-haiku-5-5":0.5,"claude-sonnet-5-5":2},"max_consecutive_failures":3,
 "paths":{"state":"` + filepath.Join(dir, "state") + `","manual_stop":"` + filepath.Join(dir, "STOP") + `"}}`

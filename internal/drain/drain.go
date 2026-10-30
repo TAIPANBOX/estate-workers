@@ -59,7 +59,7 @@ type Deps struct {
 	// branch, before the model can change anything. It may be nil.
 	Prefetch func(ctx context.Context, workTree string) error
 	Agent    func(ctx context.Context, run agent.Run) (agent.Result, error)
-	Gates    func(ctx context.Context, repoDir, gitDir string, cmds [][]string, log io.Writer) error
+	Gates    func(ctx context.Context, run GateRun, log io.Writer) error
 	Push     func(ctx context.Context, id string) (push.Response, error)
 	ReadKey  func() (string, error)
 }
@@ -75,6 +75,15 @@ type Report struct {
 
 // Layout names every path under the state directory.
 type Layout struct{ State string }
+
+// GateRun is what the gates get: a tree to run in, the paths they may
+// read besides it, and the template's environment.
+type GateRun struct {
+	Tree     string
+	ReadOnly []string
+	Env      []string
+	Cmds     [][]string
+}
 
 func (l Layout) Incoming() string     { return filepath.Join(l.State, "queue", "incoming") }
 func (l Layout) Running() string      { return filepath.Join(l.State, "queue", "running") }
@@ -318,6 +327,9 @@ func (d Deps) execute(ctx context.Context, r task.Resolved) (outcome, reason, pr
 				return ledger.OutcomeError, "context clone: " + err.Error(), "", 0
 			}
 		}
+		if err := writeFiles(r, jobDir); err != nil {
+			return ledger.OutcomeError, "template files: " + err.Error(), "", 0
+		}
 		var err error
 		if base, err = g.Out(ctx, "rev-parse", "HEAD"); err == nil {
 			baseBranch, err = g.Out(ctx, "symbolic-ref", "--short", "HEAD")
@@ -409,6 +421,7 @@ func (d Deps) prepare(r task.Resolved, runDir, jobDir, work string) (agent.Run, 
 	})
 	env := agent.Env(key, home, tmp, d.GoRoot)
 	env = append(env, "GOCACHE="+filepath.Join(tmp, "gocache"))
+	env = append(env, templateEnv(r, jobDir)...)
 	if d.GoModCache != "" {
 		env = append(env, "GOMODCACHE="+d.GoModCache)
 	}
@@ -510,7 +523,25 @@ func (d Deps) deliver(ctx context.Context, r task.Resolved, g gitx.Git, base, ba
 	if err != nil {
 		return ledger.OutcomeError, err.Error(), ""
 	}
-	gateErr := d.Gates(ctx, work, g.GitDir, r.Tpl.Gates, logf)
+	jobDir := filepath.Dir(work)
+	tree := filepath.Join(jobDir, "gates")
+	if err := os.RemoveAll(tree); err != nil {
+		logf.Close()
+		return ledger.OutcomeError, err.Error(), ""
+	}
+	// The gates are the repository's own code and some reset and clean
+	// their tree, so they get a throwaway clone of the committed branch with
+	// a git directory of its own; the tree and history pushed stay as checked.
+	cg := gitx.Git{Bin: d.GitBin, Dir: jobDir, Home: g.Home, AllowFile: true}
+	if _, err := cg.Run(ctx, "clone", "-q", "--no-hardlinks", "--template=", "--branch", r.Branch, g.GitDir, tree); err != nil {
+		logf.Close()
+		return ledger.OutcomeError, "gates clone: " + err.Error(), ""
+	}
+	ro := []string{filepath.Join(jobDir, "context")}
+	if len(r.Files) > 0 {
+		ro = append(ro, filesDir(jobDir))
+	}
+	gateErr := d.Gates(ctx, GateRun{Tree: tree, ReadOnly: ro, Env: templateEnv(r, jobDir), Cmds: r.Tpl.Gates}, logf)
 	logf.Close()
 	if gateErr != nil {
 		return ledger.OutcomeFailed, "gates: " + gateErr.Error(), ""
@@ -608,4 +639,36 @@ func dropSandboxPlaceholders(ctx context.Context, g gitx.Git, work string) error
 		}
 	}
 	return nil
+}
+
+func filesDir(jobDir string) string { return filepath.Join(jobDir, "files") }
+
+// writeFiles writes the template's files for a job, with {{context}} filled
+// in. The model's deny rules keep it from editing them.
+func writeFiles(r task.Resolved, jobDir string) error {
+	if len(r.Files) == 0 {
+		return nil
+	}
+	dir := filesDir(jobDir)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return err
+	}
+	ctxDir := filepath.Join(jobDir, "context")
+	for name, content := range r.Files {
+		data := strings.ReplaceAll(content, template.ContextPlaceholder, ctxDir)
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o640); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// templateEnv is the template's NAME=path pairs for a job, sorted.
+func templateEnv(r task.Resolved, jobDir string) []string {
+	var env []string
+	for name, value := range r.Env {
+		env = append(env, name+"="+strings.Replace(value, template.FilesPlaceholder, filesDir(jobDir), 1))
+	}
+	slices.Sort(env)
+	return env
 }

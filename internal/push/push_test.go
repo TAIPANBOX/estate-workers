@@ -97,7 +97,7 @@ func setup(t *testing.T) *env {
 	base := mustOut(t, g, "rev-parse", "HEAD")
 
 	cfg := config.Config{
-		Owner: "TAIPANBOX", Repos: []string{"architecture", "agent-stack-go"}, PrivateRepos: []string{"architecture"},
+		Owner: "TAIPANBOX", Repos: []string{"architecture", "agent-stack-go", "estate-gates"}, PrivateRepos: []string{"architecture"},
 		DayCapUSD: 6, MonthCapUSD: 80, UnverifiedCapUSD: 0.1, MaxConsecutiveFailures: 3,
 		RunCapUSD: map[string]float64{"claude-haiku-5-5": 0.5, "claude-sonnet-5-5": 2},
 	}

@@ -195,3 +195,51 @@ func TestLoadRefusesMismatchedNamesDuplicatesAndBadFiles(t *testing.T) {
 		t.Error("missing dir accepted")
 	}
 }
+
+// A template may hand a tool one configuration file and point one
+// NAME_CONFIG variable at it, and nothing wider: no variable a shell, git,
+// Go, the dynamic loader or Claude Code reads, no value outside the
+// template's own files, no file name that leaves the files directory.
+func TestTemplateFilesAndEnvStayNarrow(t *testing.T) {
+	withFiles := func() Template {
+		tpl := valid()
+		tpl.Files = map[string]string{"tool.json": `{"root": "{{context}}/{{service}}"}`}
+		tpl.Env = map[string]string{"TOOL_CONFIG": "{{files}}/tool.json"}
+		return tpl
+	}
+	if err := withFiles().Validate(); err != nil {
+		t.Fatalf("a narrow file and its variable are refused: %v", err)
+	}
+	cases := map[string]func(*Template){
+		"name without _CONFIG":       func(t *Template) { t.Env = map[string]string{"TOOL": "{{files}}/tool.json"} },
+		"git reads it":               func(t *Template) { t.Env = map[string]string{"GIT_CONFIG": "{{files}}/tool.json"} },
+		"git global config":          func(t *Template) { t.Env = map[string]string{"GIT_CONFIG_GLOBAL": "{{files}}/tool.json"} },
+		"claude code reads it":       func(t *Template) { t.Env = map[string]string{"CLAUDE_CONFIG": "{{files}}/tool.json"} },
+		"the loader reads it":        func(t *Template) { t.Env = map[string]string{"LD_CONFIG": "{{files}}/tool.json"} },
+		"go reads it":                func(t *Template) { t.Env = map[string]string{"GOENV_CONFIG": "{{files}}/tool.json"} },
+		"lower case":                 func(t *Template) { t.Env = map[string]string{"tool_CONFIG": "{{files}}/tool.json"} },
+		"value is a host path":       func(t *Template) { t.Env = map[string]string{"TOOL_CONFIG": "/etc/passwd"} },
+		"value is a context path":    func(t *Template) { t.Env = map[string]string{"TOOL_CONFIG": "{{context}}/x"} },
+		"value names no file":        func(t *Template) { t.Env = map[string]string{"TOOL_CONFIG": "{{files}}/other.json"} },
+		"value climbs out":           func(t *Template) { t.Env = map[string]string{"TOOL_CONFIG": "{{files}}/../tool.json"} },
+		"file name climbs out":       func(t *Template) { t.Files = map[string]string{"../tool.json": "x"} },
+		"hidden file name":           func(t *Template) { t.Files = map[string]string{".tool.json": "x"} },
+		"file in a subdirectory":     func(t *Template) { t.Files = map[string]string{"a/tool.json": "x"} },
+		"file is too large":          func(t *Template) { t.Files["tool.json"] = strings.Repeat("x", 16<<10+1) },
+		"file uses an unknown param": func(t *Template) { t.Files["tool.json"] = "{{other}}" },
+		"param shadows context":      func(t *Template) { t.Params["context"] = "^x$" },
+		"param shadows files":        func(t *Template) { t.Params["files"] = "^x$" },
+		"probe with files": func(t *Template) {
+			*t = Template{Name: "probe", Kind: KindProbe, Tier: "T0", Model: "claude-haiku-5-5",
+				AllowedModels: []string{"claude-haiku-5-5"}, MaxTurns: 1, MaxBudgetUSD: 0.05, Prompt: "hi",
+				Files: map[string]string{"tool.json": "x"}}
+		},
+	}
+	for name, mutate := range cases {
+		tpl := withFiles()
+		mutate(&tpl)
+		if err := tpl.Validate(); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}

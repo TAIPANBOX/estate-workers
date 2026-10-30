@@ -14,7 +14,7 @@ import (
 func setup(t *testing.T) (config.Config, map[string]template.Template) {
 	t.Helper()
 	cfg := config.Config{
-		Owner: "TAIPANBOX", Repos: []string{"architecture", "agent-stack-go", "qryx"},
+		Owner: "TAIPANBOX", Repos: []string{"architecture", "agent-stack-go", "estate-gates", "qryx"},
 		PrivateRepos: []string{"architecture"}, DayCapUSD: 6, MonthCapUSD: 80, UnverifiedCapUSD: 0.1,
 		RunCapUSD:              map[string]float64{"claude-haiku-5-5": 0.3, "claude-sonnet-5-5": 2, "claude-opus-5-5": 4},
 		MaxConsecutiveFailures: 3,
@@ -52,8 +52,11 @@ func TestAValidDossierTaskResolves(t *testing.T) {
 	if len(r.AllowedPaths) != 2 || r.AllowedPaths[0] != "services/agent-stack-go.md" {
 		t.Errorf("paths %v", r.AllowedPaths)
 	}
-	if len(r.ContextRepos) != 1 || r.ContextRepos[0] != "agent-stack-go" {
+	if !slices.Equal(r.ContextRepos, []string{"agent-stack-go", "estate-gates"}) {
 		t.Errorf("context %v", r.ContextRepos)
+	}
+	if f := r.Files["archguard.json"]; !strings.Contains(f, "{{context}}/estate-gates/estate.json") || r.Env["ARCHGUARD_CONFIG"] != "{{files}}/archguard.json" {
+		t.Errorf("files %v env %v", r.Files, r.Env)
 	}
 	if !strings.Contains(r.Prompt, "services/agent-stack-go.md") || strings.Contains(r.Prompt, "{{") {
 		t.Errorf("prompt not expanded: %.80q", r.Prompt)

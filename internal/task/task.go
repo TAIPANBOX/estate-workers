@@ -55,6 +55,8 @@ type Resolved struct {
 	AllowedPaths []string
 	ContextRepos []string
 	Tools        []string
+	Files        map[string]string
+	Env          map[string]string
 	Prompt       string
 	Title        string
 }
@@ -148,6 +150,13 @@ func (t Task) Validate(cfg config.Config, tpls map[string]template.Template) (Re
 		for _, p := range tpl.AllowedPaths {
 			r.AllowedPaths = append(r.AllowedPaths, template.Expand(p, t.Params))
 		}
+		if len(tpl.Files) > 0 {
+			r.Files = map[string]string{}
+			for name, content := range tpl.Files {
+				r.Files[name] = template.Expand(content, t.Params)
+			}
+		}
+		r.Env = tpl.Env
 		for _, c := range tpl.ContextRepos {
 			repo := template.Expand(c, t.Params)
 			if !cfg.RepoAllowed(repo) {

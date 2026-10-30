@@ -3,6 +3,7 @@ package drain
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -60,6 +61,8 @@ type harness struct {
 	agentErr error
 	block    bool
 	gateErr  error
+	gate     func(GateRun) error
+	gateRuns []GateRun
 	pushResp *push.Response
 	identity []string
 }
@@ -91,7 +94,7 @@ func newHarness(t *testing.T) *harness {
 	}
 
 	cfg := config.Config{
-		Owner: "TAIPANBOX", Repos: []string{"architecture", "agent-stack-go"}, PrivateRepos: []string{"architecture"},
+		Owner: "TAIPANBOX", Repos: []string{"architecture", "agent-stack-go", "estate-gates"}, PrivateRepos: []string{"architecture"},
 		DayCapUSD: 6, MonthCapUSD: 80, BillingVerified: true, UnverifiedCapUSD: 0.1, MaxConsecutiveFailures: 3,
 		RunCapUSD:  map[string]float64{"claude-haiku-5-5": 0.5, "claude-sonnet-5-5": 2},
 		CommitName: "taipanbox-workers[bot]", CommitEmail: "1+taipanbox-workers[bot]@users.noreply.github.com",
@@ -136,8 +139,14 @@ func newHarness(t *testing.T) *harness {
 			}
 			return h.result, h.agentErr
 		},
-		Gates: func(ctx context.Context, repoDir, gitDir string, cmds [][]string, log io.Writer) error {
+		Gates: func(ctx context.Context, run GateRun, log io.Writer) error {
 			io.WriteString(log, "gates ran\n")
+			h.gateRuns = append(h.gateRuns, run)
+			if h.gate != nil {
+				if err := h.gate(run); err != nil {
+					return err
+				}
+			}
 			return h.gateErr
 		},
 		Push: func(ctx context.Context, id string) (push.Response, error) {
@@ -438,7 +447,7 @@ func TestEnqueueRefusesInvalidAndDuplicateTasks(t *testing.T) {
 }
 
 func TestBodyHasTheFixedShapeAndFencesTheModelReport(t *testing.T) {
-	cfg := config.Config{Owner: "TAIPANBOX", Repos: []string{"architecture", "qryx"}, DayCapUSD: 1, MonthCapUSD: 1,
+	cfg := config.Config{Owner: "TAIPANBOX", Repos: []string{"architecture", "estate-gates", "qryx"}, DayCapUSD: 1, MonthCapUSD: 1,
 		RunCapUSD: map[string]float64{"claude-haiku-5-5": 0.5, "claude-sonnet-5-5": 2}, MaxConsecutiveFailures: 1}
 	tpls, _ := template.Load()
 	tk := task.Task{ID: "20261030T120000Z-abcdef", Template: "dossier-bump", Repo: "architecture", Params: map[string]string{"service": "qryx"}, RequestedBy: "s"}
@@ -582,5 +591,99 @@ func TestOnlyEmptyNewFilesAreTreatedAsPlaceholders(t *testing.T) {
 	rep, _ := Once(bg, h.d)
 	if rep.Outcome == ledger.OutcomeOK || len(h.prs.got) != 0 {
 		t.Fatalf("a .env with content was let through: %+v", rep)
+	}
+}
+
+func dossierEdit(dir string) {
+	os.WriteFile(filepath.Join(dir, "services", "agent-stack-go.md"), []byte("verified_at: bbb\n"), 0o644)
+}
+
+// The gates are the repository's own code, and some of them check
+// themselves by resetting and cleaning their tree (architecture's
+// gates-have-teeth.sh, measured on the host 2026-10-30: it left the tree
+// dirty because the git directory was read-only). They run in a throwaway
+// clone of the committed branch with a git directory of its own, so
+// nothing they do reaches the tree or the history that is pushed.
+func TestGatesRunInADisposableCloneOfTheBranch(t *testing.T) {
+	h := newHarness(t)
+	h.edit = dossierEdit
+	h.gate = func(run GateRun) error {
+		if run.Tree == h.agentRun[0].Dir {
+			return errors.New("the gates got the delivered tree")
+		}
+		if fi, err := os.Lstat(filepath.Join(run.Tree, ".git")); err != nil || !fi.IsDir() {
+			return fmt.Errorf("the gate tree has no git directory of its own: %v", err)
+		}
+		if got, err := os.ReadFile(filepath.Join(run.Tree, "services", "agent-stack-go.md")); err != nil || string(got) != "verified_at: bbb\n" {
+			return fmt.Errorf("the gate tree is not the committed change: %q %v", got, err)
+		}
+		// What a self-checking gate does to its own tree.
+		g := gitx.Git{Bin: h.d.GitBin, Dir: run.Tree, Home: h.root, Env: h.identity}
+		os.Remove(filepath.Join(run.Tree, "README.md"))
+		if _, err := g.Run(bg, "commit", "-qam", "a gate rewrote history"); err != nil {
+			return err
+		}
+		return nil
+	}
+	h.enqueue(t, dossier())
+	rep, err := Once(bg, h.d)
+	if err != nil || rep.Outcome != ledger.OutcomeOK {
+		t.Fatalf("report %+v err %v", rep, err)
+	}
+	if !exists(filepath.Join(h.agentRun[0].Dir, "README.md")) {
+		t.Error("a gate deleted a file in the delivered tree")
+	}
+	remote := gitx.Git{Bin: h.d.GitBin, GitDir: h.remote, Home: h.root}
+	branch := "refs/heads/worker/dossier-bump/" + rep.ID
+	if subj, err := remote.Out(bg, "log", "-1", "--format=%s", branch); err != nil || strings.Contains(subj, "a gate rewrote history") {
+		t.Errorf("pushed head %q (%v) carries the gate's commit", subj, err)
+	}
+	if _, err := remote.Run(bg, "cat-file", "-e", branch+":README.md"); err != nil {
+		t.Errorf("the pushed branch lost README.md: %v", err)
+	}
+}
+
+// architecture's render-index reads the estate registry through a config
+// file named by ARCHGUARD_CONFIG (measured on the host 2026-10-30: "does
+// not exist; run archguard install"). The template's file is written with
+// the context directory filled in, its variable reaches both the model and
+// the gates, and the gates may read the context and the files and nothing
+// else beside their tree.
+func TestTemplateFilesReachTheModelAndTheGates(t *testing.T) {
+	h := newHarness(t)
+	h.edit = dossierEdit
+	var cfgData []byte
+	h.gate = func(run GateRun) error {
+		job := filepath.Dir(h.agentRun[0].Dir)
+		cfg := filepath.Join(job, "files", "archguard.json")
+		var err error
+		cfgData, err = os.ReadFile(cfg)
+		if err != nil {
+			return err
+		}
+		want := "ARCHGUARD_CONFIG=" + cfg
+		if !slices.Contains(h.agentRun[0].Env, want) {
+			return fmt.Errorf("the model's environment lacks %s", want)
+		}
+		if !slices.Contains(run.Env, want) {
+			return fmt.Errorf("the gates' environment %v lacks %s", run.Env, want)
+		}
+		ro := []string{filepath.Join(job, "context"), filepath.Join(job, "files")}
+		if !slices.Equal(run.ReadOnly, ro) {
+			return fmt.Errorf("gates read %v, want %v", run.ReadOnly, ro)
+		}
+		return nil
+	}
+	h.enqueue(t, dossier())
+	rep, err := Once(bg, h.d)
+	if err != nil || rep.Outcome != ledger.OutcomeOK {
+		t.Fatalf("report %+v err %v", rep, err)
+	}
+	job := filepath.Dir(h.agentRun[0].Dir)
+	if want := filepath.Join(job, "context", "estate-gates", "estate.json"); !strings.Contains(string(cfgData), want) {
+		t.Errorf("the config does not name %s:\n%s", want, cfgData)
+	}
+	if strings.Contains(string(cfgData), "{{") {
+		t.Errorf("a placeholder is left in the config:\n%s", cfgData)
 	}
 }

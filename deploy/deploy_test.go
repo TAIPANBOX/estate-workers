@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/TAIPANBOX/estate-workers/internal/template"
 )
 
 var loadCredRe = regexp.MustCompile(`(?m)^LoadCredentialEncrypted=(.*)$`)
@@ -109,4 +111,48 @@ func TestExportedBundlesAreReadableByTheDrainService(t *testing.T) {
 	if !strings.Contains(read(t, "install.sh"), "\ninstall -d -m 2750 -o claudew-gh -g claudew /var/lib/claudew-gh/export\n") {
 		t.Error("install.sh does not make the export directory setgid claudew")
 	}
+}
+
+// Every program a template's gate starts must be on the host, or the gate
+// fails after the model has already been paid for (measured on the host
+// 2026-10-30: "bwrap: execvp make: No such file or directory"). A gate that
+// starts the repository's own script names a path; Go comes from go.dev,
+// pinned by GO_VERSION; anything else comes from the installer's apt line.
+func TestInstallerProvidesEveryGateProgram(t *testing.T) {
+	tpls, err := template.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	apt := aptPackages(t, read(t, "install.sh"))
+	checked := 0
+	for name, tpl := range tpls {
+		for _, gate := range tpl.Gates {
+			prog := gate[0]
+			if strings.Contains(prog, "/") || prog == "go" {
+				continue
+			}
+			checked++
+			if !apt[prog] {
+				t.Errorf("template %s runs gate %q, but install.sh does not install %s", name, strings.Join(gate, " "), prog)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no template gate starts a host program; this test measured nothing")
+	}
+}
+
+var aptLineRe = regexp.MustCompile(`(?m)^apt-get install -y -q (.*)$`)
+
+func aptPackages(t *testing.T, install string) map[string]bool {
+	t.Helper()
+	m := aptLineRe.FindStringSubmatch(install)
+	if m == nil {
+		t.Fatal("install.sh has no apt-get install line; update this test with it")
+	}
+	pkgs := map[string]bool{}
+	for _, f := range strings.Fields(m[1]) {
+		pkgs[strings.Trim(strings.SplitN(f, "=", 2)[0], `"`)] = true
+	}
+	return pkgs
 }

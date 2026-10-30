@@ -276,9 +276,9 @@ func production(cfg config.Config, tpls map[string]template.Template) drain.Deps
 			return nil
 		},
 		Agent: func(ctx context.Context, r agent.Run) (agent.Result, error) { return r.Do(ctx) },
-		Gates: func(ctx context.Context, repoDir, gitDir string, cmds [][]string, log io.Writer) error {
-			s := gates.Sandbox{Bwrap: cfg.Paths.Bwrap, GoRoot: cfg.Paths.GoRoot, GoModCache: modCache, GitDir: gitDir}
-			return s.Run(ctx, repoDir, cmds, log)
+		Gates: func(ctx context.Context, run drain.GateRun, log io.Writer) error {
+			s := gates.Sandbox{Bwrap: cfg.Paths.Bwrap, GoRoot: cfg.Paths.GoRoot, GoModCache: modCache, ReadOnly: run.ReadOnly, Env: run.Env}
+			return s.Run(ctx, run.Tree, run.Cmds, log)
 		},
 		Push: func(ctx context.Context, id string) (push.Response, error) {
 			cctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
