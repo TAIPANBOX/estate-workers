@@ -123,3 +123,22 @@ Feature: Estate workers spend the monthly API credits, not the weekly plan limit
     When the service starts
     Then it loads that file by its full path, and the uninstaller removes the same file
     # test: TestServicesLoadTheFilePutCredentialWrites
+
+  Scenario: The model works in its own job tree and nowhere in the worker's state
+    Given a task's repository sits under the worker's state directory
+    When the model edits files there, directly or through a shell command
+    Then edits in the job's repository, home and temp directory are allowed
+    And the ledger, the queue, the runs, the caches, the git home and the context repositories stay denied
+    # test: TestDenyGuardsTheWorkerStateButNotTheJobTree
+
+  Scenario: A run gets exactly the built-in tools its template names
+    Given minimal mode offers only a shell, read and edit by default
+    When a template allows other tools
+    Then the run names those built-in tools explicitly and no others
+    # test: TestBuiltinToolsAreTheBaseNamesOfTheRules, TestArgsAreBareAndPrintAndNeverCarryTheKey
+
+  Scenario: The shell sandbox works inside the drain service
+    Given the drain service is hardened by systemd
+    When the model runs a shell command
+    Then bubblewrap can still open paths, because no filter in the service answers its calls with ENOSYS
+    # test: TestDrainServiceLetsBubblewrapOpenPaths

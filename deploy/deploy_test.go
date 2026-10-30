@@ -55,3 +55,20 @@ func read(t *testing.T, name string) string {
 	}
 	return string(b)
 }
+
+// systemd's RestrictSUIDSGID filter answers openat2 with ENOSYS, and
+// bubblewrap then cannot open any path, so Claude Code's shell sandbox fails
+// inside the drain service (measured on the host 2026-10-30 by switching
+// each property off in turn). NoNewPrivileges still stops a set-uid file
+// from granting anything. The push service runs no bubblewrap and keeps it.
+func TestDrainServiceLetsBubblewrapOpenPaths(t *testing.T) {
+	if strings.Contains(read(t, "systemd/claudew.service"), "\nRestrictSUIDSGID=yes") {
+		t.Error("claudew.service sets RestrictSUIDSGID=yes, which breaks bubblewrap")
+	}
+	if !strings.Contains(read(t, "systemd/claudew.service"), "\nNoNewPrivileges=yes") {
+		t.Error("claudew.service lost NoNewPrivileges=yes")
+	}
+	if !strings.Contains(read(t, "systemd/claudew-push.service"), "\nRestrictSUIDSGID=yes") {
+		t.Error("claudew-push.service lost RestrictSUIDSGID=yes")
+	}
+}

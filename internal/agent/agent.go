@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -50,7 +51,15 @@ var Deny = []string{
 	"Read(//etc/credstore.encrypted/**)", "Read(//etc/credstore/**)", "Read(~/.ssh/**)",
 	"Edit(./.git)", "Write(./.git)", "Edit(./.git/**)", "Write(./.git/**)", "Edit(./.github/**)", "Write(./.github/**)",
 	"Edit(./.claude/**)", "Write(./.claude/**)", "Edit(./.mcp.json)", "Write(./.mcp.json)",
-	"Edit(//var/lib/claudew/**)", "Write(//var/lib/claudew/**)",
+	// The worker's own state, never the job tree the model works in: Claude
+	// Code applies these rules to the paths shell commands write as well.
+	"Edit(//var/lib/claudew/*.jsonl)", "Write(//var/lib/claudew/*.jsonl)",
+	"Edit(//var/lib/claudew/STOP)", "Write(//var/lib/claudew/STOP)",
+	"Edit(//var/lib/claudew/queue/**)", "Write(//var/lib/claudew/queue/**)",
+	"Edit(//var/lib/claudew/runs/**)", "Write(//var/lib/claudew/runs/**)",
+	"Edit(//var/lib/claudew/cache/**)", "Write(//var/lib/claudew/cache/**)",
+	"Edit(//var/lib/claudew/jobs/*/githome/**)", "Write(//var/lib/claudew/jobs/*/githome/**)",
+	"Edit(//var/lib/claudew/jobs/*/context/**)", "Write(//var/lib/claudew/jobs/*/context/**)",
 	"Edit(//etc/**)", "Write(//etc/**)",
 }
 
@@ -76,6 +85,7 @@ func Args(in Inputs) []string {
 		a = append(a, "--disallowedTools", "*")
 	} else {
 		a = append(a,
+			"--tools", strings.Join(BuiltinTools(in.AllowedTools), ","),
 			"--allowedTools", strings.Join(in.AllowedTools, ","),
 			"--disallowedTools", "WebFetch,WebSearch,Agent")
 	}
@@ -287,4 +297,18 @@ func ManagedSettings() ([]byte, error) {
 		"env": ManagedEnv,
 	}
 	return json.MarshalIndent(m, "", "  ")
+}
+
+// BuiltinTools names the built-in tools a run's rules need, in order:
+// "Edit(./**)" needs Edit and "Bash(make gates)" needs Bash. Without an
+// explicit --tools, --bare offers only Bash, Read and Edit.
+func BuiltinTools(allowed []string) []string {
+	var out []string
+	for _, r := range allowed {
+		name, _, _ := strings.Cut(r, "(")
+		if !slices.Contains(out, name) {
+			out = append(out, name)
+		}
+	}
+	return out
 }
