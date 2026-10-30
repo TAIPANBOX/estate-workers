@@ -67,6 +67,8 @@ getent group claudew >/dev/null || groupadd --system claudew
 getent passwd claudew >/dev/null || useradd --system --gid claudew --home-dir /var/lib/claudew --no-create-home --shell /usr/sbin/nologin claudew
 getent group claudew-gh >/dev/null || groupadd --system claudew-gh
 getent passwd claudew-gh >/dev/null || useradd --system --gid claudew-gh --groups claudew --home-dir /var/lib/claudew-gh --no-create-home --shell /usr/sbin/nologin claudew-gh
+getent group claudew-proxy >/dev/null || groupadd --system claudew-proxy
+getent passwd claudew-proxy >/dev/null || useradd --system --gid claudew-proxy --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin claudew-proxy
 
 echo "== directories"
 install -d -m 0750 -o claudew -g claudew /var/lib/claudew
@@ -93,11 +95,13 @@ install -m 0644 -o root -g root "$HERE/claudew-egress.nft" /etc/claudew/egress.n
 /usr/sbin/nft -c -f /etc/claudew/egress.nft
 
 echo "== units (timer installed, not enabled)"
-for u in claudew-egress.service claudew.service claudew.timer claudew-push.socket claudew-push.service; do
+for u in claudew-egress.service claudew.service claudew.timer claudew-push.socket claudew-push.service \
+         claudew-proxy.socket claudew-proxy.service; do
   install -m 0644 -o root -g root "$HERE/systemd/$u" "/etc/systemd/system/$u"
 done
 systemctl daemon-reload
 systemctl enable --now claudew-egress.service
+systemctl enable --now claudew-proxy.socket
 systemctl enable --now claudew-push.socket
 
 echo "== done. Next: credentials with deploy/put-credential.sh, then the checks."

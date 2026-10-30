@@ -60,10 +60,17 @@ Process and invariants only. English throughout, no long dashes.
     auto stop lives in a denied directory and no deny names a single file.
     *(tests: `TestDenyNamesNoSingleFileTheSandboxWouldCreate`,
     `TestAutoStopLivesInADeniedDirectoryThatExistsBeforeAnyRun`)*
-16. **The worker users reach the router only on port 53 and the internet
-    only on 443**, by a positive match in a table of their own that never
-    touches another table, and neither service runs without it.
+16. **The push and proxy users reach the router only on port 53 and the
+    internet only on 443, and the model's user sends nothing on the host**,
+    by a positive match in a table of their own that never touches another
+    table; no worker service runs without it.
     *(tests: `TestEgress*`, `TestWorkerServicesRequireTheEgressFilter`; mutants "the egress filter ...")*
+17. **The model and the gates see none of the host's services.** The drain
+    service has a network namespace of its own; its one door out is the
+    egress proxy, which tunnels only to allowlisted hosts (`egress.Allow`,
+    a reviewed change, never a setting) on 443 whose every address is public.
+    *(tests: `TestDrainServiceLivesInItsOwnNetworkNamespace`, `TestProxy*`,
+    `TestOnlyInternetAddressesArePublic`; mutants "the proxy tunnels ...")*
 
 ## Escalate, do not push through
 

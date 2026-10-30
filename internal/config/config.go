@@ -47,6 +47,9 @@ type Paths struct {
 	GoRoot     string `json:"go_root"`
 	PushSocket string `json:"push_socket"`
 	PushState  string `json:"push_state"`
+	// ProxySocket is the egress proxy's unix socket; the drain service,
+	// in a network namespace of its own, reaches out only through it.
+	ProxySocket string `json:"proxy_socket"`
 }
 
 type Config struct {
@@ -165,6 +168,7 @@ func (c Config) Validate() error {
 		"state": c.Paths.State, "manual_stop": c.Paths.ManualStop, "claude": c.Paths.Claude,
 		"secretscan": c.Paths.Secretscan, "bwrap": c.Paths.Bwrap, "git": c.Paths.Git,
 		"go_root": c.Paths.GoRoot, "push_socket": c.Paths.PushSocket, "push_state": c.Paths.PushState,
+		"proxy_socket": c.Paths.ProxySocket,
 	} {
 		if p != "" && (!filepath.IsAbs(p) || filepath.Clean(p) != p) {
 			add("paths.%s %q must be an absolute, clean path", name, p)

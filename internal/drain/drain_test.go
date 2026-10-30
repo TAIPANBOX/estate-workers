@@ -717,3 +717,31 @@ func TestAutoStopLivesInADeniedDirectoryThatExistsBeforeAnyRun(t *testing.T) {
 		t.Errorf("the stop directory does not exist before a run: %v", err)
 	}
 }
+
+// In its own network namespace the drain service has only loopback, so the
+// run reaches the API through the egress bridge: claude gets HTTPS_PROXY,
+// and the key still appears once.
+func TestTheRunReachesOutThroughTheEgressBridge(t *testing.T) {
+	h := newHarness(t)
+	h.d.ProxyURL = "http://127.0.0.1:41999"
+	h.edit = dossierEdit
+	h.enqueue(t, dossier())
+	if rep, err := Once(bg, h.d); err != nil || rep.Outcome != ledger.OutcomeOK {
+		t.Fatalf("report %+v err %v", rep, err)
+	}
+	env := h.agentRun[0].Env
+	for _, want := range []string{"HTTPS_PROXY=http://127.0.0.1:41999", "https_proxy=http://127.0.0.1:41999", "NO_PROXY=localhost,127.0.0.1,::1"} {
+		if !slices.Contains(env, want) {
+			t.Errorf("run environment lacks %s", want)
+		}
+	}
+	keys := 0
+	for _, kv := range env {
+		if strings.Contains(kv, "sk-test-key") {
+			keys++
+		}
+	}
+	if keys != 1 {
+		t.Errorf("key appears %d times", keys)
+	}
+}

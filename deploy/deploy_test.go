@@ -185,10 +185,11 @@ func TestEgressFilterOwnsOneTableAndNeverFlushes(t *testing.T) {
 	}
 }
 
-// Only packets the two worker users send are judged, by a positive match.
-// A negated match (skuid != workers accept, then drops) lets packets with
-// no full socket, such as the SYN-ACK of the host's own sshd, fall through
-// to the drops and cut the host off its own network.
+// Only packets the worker users send are judged, by a positive match. A
+// negated match (skuid != workers accept, then drops) lets packets with no
+// full socket, such as the SYN-ACK of the host's own sshd, fall through to
+// the drops and cut the host off its own network. The drain user lives in
+// a network namespace of its own, so on the host it sends nothing at all.
 func TestEgressJudgesOnlyTheWorkersByAPositiveMatch(t *testing.T) {
 	nft := read(t, "claudew-egress.nft")
 	if strings.Contains(nft, "!=") {
@@ -196,37 +197,36 @@ func TestEgressJudgesOnlyTheWorkersByAPositiveMatch(t *testing.T) {
 	}
 	if got := chainRules(t, nft, "output"); !slices.Equal(got, []string{
 		"type filter hook output priority filter; policy accept;",
-		`meta skuid { "claudew", "claudew-gh" } jump workers`,
+		`meta skuid "claudew" counter drop`,
+		`meta skuid { "claudew-gh", "claudew-proxy" } jump egress`,
 	}) {
 		t.Errorf("output chain is %q", got)
 	}
 }
 
-// The workers reach the router only for DNS, no other private or
-// link-local address, and the internet only over HTTPS. The router is the
-// same address the units' IPAddressAllow names. Loopback means the loopback
-// addresses: a packet to the host's own LAN address also leaves through lo,
-// and an `oifname "lo" accept` let claudew reach the host's node exporter
-// on 192.168.1.10:9100 (measured on the host 2026-10-30).
+// The push and proxy users reach the router only for DNS, not the host's
+// loopback or any other private, shared or link-local address, and the
+// internet only over HTTPS. The host's own services listen on loopback
+// (measured on the host 2026-10-30: 127.0.0.1:9100 answered claudew), and
+// a packet to the host's LAN address leaves through lo too. The router is
+// the same address the units' IPAddressAllow names.
 func TestEgressAllowsOnlyDNSToTheRouterAndHTTPSOut(t *testing.T) {
 	nft := read(t, "claudew-egress.nft")
-	if got := chainRules(t, nft, "workers"); !slices.Equal(got, []string{
-		"ip daddr 127.0.0.0/8 accept",
-		"ip6 daddr ::1 accept",
+	if got := chainRules(t, nft, "egress"); !slices.Equal(got, []string{
 		"ip daddr $dns meta l4proto { tcp, udp } th dport 53 accept",
-		"ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, 224.0.0.0/4, 255.255.255.255 } counter drop",
-		"ip6 daddr { fc00::/7, fe80::/10, ff00::/8 } counter drop",
+		"ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 255.255.255.255 } counter drop",
+		"ip6 daddr { ::1, fc00::/7, fe80::/10, ff00::/8 } counter drop",
 		"meta l4proto tcp th dport 443 accept",
 		"counter drop",
 	}) {
-		t.Errorf("workers chain is %q", got)
+		t.Errorf("egress chain is %q", got)
 	}
 	m := regexp.MustCompile(`(?m)^define dns = (\S+)$`).FindStringSubmatch(nft)
 	if m == nil {
 		t.Fatal("claudew-egress.nft defines no dns")
 	}
-	for _, u := range []string{"systemd/claudew.service", "systemd/claudew-push.service"} {
-		if !strings.Contains(read(t, u), "\nIPAddressAllow="+m[1]+"/32 ") {
+	for _, u := range []string{"systemd/claudew-push.service", "systemd/claudew-proxy.service"} {
+		if !regexp.MustCompile(`(?m)^IPAddressAllow=` + regexp.QuoteMeta(m[1]) + `/32\b`).MatchString(read(t, u)) {
 			t.Errorf("%s does not allow the router %s that the egress filter names", u, m[1])
 		}
 	}
@@ -235,7 +235,7 @@ func TestEgressAllowsOnlyDNSToTheRouterAndHTTPSOut(t *testing.T) {
 // The workers never run without the filter: both services require it and
 // start after it, and the installer and uninstaller handle it.
 func TestWorkerServicesRequireTheEgressFilter(t *testing.T) {
-	for _, u := range []string{"systemd/claudew.service", "systemd/claudew-push.service"} {
+	for _, u := range []string{"systemd/claudew.service", "systemd/claudew-push.service", "systemd/claudew-proxy.service"} {
 		unit := read(t, u)
 		for _, want := range []string{"\nRequires=claudew-egress.service\n", "claudew-egress.service"} {
 			if !strings.Contains(unit, want) {
@@ -274,4 +274,68 @@ func chainRules(t *testing.T, nft, chain string) []string {
 		}
 	}
 	return rules
+}
+
+// The drain service, where the model and the gates run, has a network
+// namespace of its own with nothing but loopback: none of the host's
+// services on 127.0.0.1 or ::1 is in it. Its one door out is the egress
+// proxy's unix socket, named the same in the socket unit and the config.
+func TestDrainServiceLivesInItsOwnNetworkNamespace(t *testing.T) {
+	unit := read(t, "systemd/claudew.service")
+	for _, want := range []string{"\nPrivateNetwork=yes\n", "\nIPAddressDeny=any\n", "\nIPAddressAllow=localhost\n"} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("claudew.service lacks %q", strings.TrimSpace(want))
+		}
+	}
+	if !regexp.MustCompile(`(?m)^Wants=.*\bclaudew-proxy\.socket\b`).MatchString(unit) ||
+		!regexp.MustCompile(`(?m)^After=.*\bclaudew-proxy\.socket\b`).MatchString(unit) {
+		t.Error("claudew.service does not want and follow the proxy socket")
+	}
+	sock := regexp.MustCompile(`(?m)^ListenStream=(\S+)$`).FindStringSubmatch(read(t, "systemd/claudew-proxy.socket"))
+	if sock == nil {
+		t.Fatal("claudew-proxy.socket listens on nothing")
+	}
+	if !strings.Contains(read(t, "config.example.json"), `"proxy_socket": "`+sock[1]+`"`) {
+		t.Errorf("config.example.json does not name the proxy socket %s", sock[1])
+	}
+}
+
+// The proxy runs as a user of its own, so neither the model's user nor the
+// key holder's can change what it lets through, and it reaches no loopback
+// or private address itself; only the drain service's group may connect.
+func TestProxyIsItsOwnUserAndReachesNoLoopback(t *testing.T) {
+	unit := read(t, "systemd/claudew-proxy.service")
+	for _, want := range []string{"\nUser=claudew-proxy\n", "\nGroup=claudew-proxy\n", " proxy-serve\n",
+		"\nRequires=claudew-proxy.socket\n", "\nNoNewPrivileges=yes\n", "\nProtectSystem=strict\n"} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("claudew-proxy.service lacks %q", strings.TrimSpace(want))
+		}
+	}
+	deny := regexp.MustCompile(`(?m)^IPAddressDeny=(.*)$`).FindStringSubmatch(unit)
+	if deny == nil {
+		t.Fatal("claudew-proxy.service denies no address")
+	}
+	for _, p := range []string{"127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16", "fc00::/7", "fe80::/10"} {
+		if !slices.Contains(strings.Fields(deny[1]), p) {
+			t.Errorf("claudew-proxy.service does not deny %s", p)
+		}
+	}
+	sock := read(t, "systemd/claudew-proxy.socket")
+	for _, want := range []string{"\nSocketUser=claudew-proxy\n", "\nSocketGroup=claudew\n", "\nSocketMode=0660\n", "\nDirectoryMode=0755\n"} {
+		if !strings.Contains(sock, want) {
+			t.Errorf("claudew-proxy.socket lacks %q", strings.TrimSpace(want))
+		}
+	}
+	install := read(t, "install.sh")
+	for _, want := range []string{"useradd --system --gid claudew-proxy", "systemctl enable --now claudew-proxy.socket"} {
+		if !strings.Contains(install, want) {
+			t.Errorf("install.sh lacks %q", want)
+		}
+	}
+	uninstall := read(t, "uninstall.sh")
+	for _, want := range []string{"claudew-proxy.socket", "userdel claudew-proxy"} {
+		if !strings.Contains(uninstall, want) {
+			t.Errorf("uninstall.sh lacks %q", want)
+		}
+	}
 }

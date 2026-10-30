@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -82,7 +83,7 @@ func TestSecretscanPassesTheEmptyAllowlistAndTheRange(t *testing.T) {
 
 func TestProductionWiringRefusesWhatItMust(t *testing.T) {
 	cfg, tpls, dir := prodConfig(t)
-	d := production(cfg, tpls)
+	d := production(cfg, tpls, "")
 	if err := d.CloneContext(bg, "architecture", filepath.Join(dir, "ctx")); err == nil {
 		t.Error("a private repo was cloned as context")
 	}
@@ -106,7 +107,7 @@ func TestPrefetchRunsGoModDownloadOnlyWhereThereIsAGoMod(t *testing.T) {
 	cfg, tpls, dir := prodConfig(t)
 	work := filepath.Join(dir, "work")
 	os.MkdirAll(work, 0o755)
-	d := production(cfg, tpls)
+	d := production(cfg, tpls, "")
 	if err := d.Prefetch(bg, work); err != nil {
 		t.Fatalf("no go.mod: %v", err)
 	}
@@ -128,7 +129,7 @@ func TestPrefetchRunsGoModDownloadOnlyWhereThereIsAGoMod(t *testing.T) {
 
 func TestGatesGoThroughTheConfiguredBwrap(t *testing.T) {
 	cfg, tpls, dir := prodConfig(t)
-	d := production(cfg, tpls)
+	d := production(cfg, tpls, "")
 	var log bytes.Buffer
 	if err := d.Gates(bg, drain.GateRun{Tree: dir, Cmds: [][]string{{"/bin/sh", "-c", "echo gate-ok"}}}, &log); err != nil {
 		t.Fatal(err)
@@ -194,5 +195,41 @@ func TestContextClonesCarryTagsAndTheWorkCloneDoesNot(t *testing.T) {
 	work := cloneArgs("/var/lib/claudew/runs/x/git")
 	if !slices.Contains(work, "--no-tags") || !slices.Contains(work, "--separate-git-dir") {
 		t.Errorf("work clone %v", work)
+	}
+}
+
+// Clones and module downloads go through the egress bridge when the drain
+// service has one, and straight out when it has none.
+func TestClonesAndModulesGoThroughTheEgressBridge(t *testing.T) {
+	if proxyConfig("") != nil {
+		t.Error("a git proxy is set with no bridge")
+	}
+	if got := proxyConfig("http://127.0.0.1:41999"); len(got) != 1 || got[0] != [2]string{"http.proxy", "http://127.0.0.1:41999"} {
+		t.Errorf("git proxy config %v", got)
+	}
+	cfg, tpls, dir := prodConfig(t)
+	gitEnv, goEnv := filepath.Join(dir, "git.env"), filepath.Join(dir, "go.env")
+	cfg.Paths.Git = script(t, dir, "git", "env > "+gitEnv+"; exit 1")
+	os.MkdirAll(filepath.Join(cfg.Paths.GoRoot, "bin"), 0o755)
+	script(t, filepath.Join(cfg.Paths.GoRoot, "bin"), "go", "env > "+goEnv)
+	d := production(cfg, tpls, "http://127.0.0.1:41999")
+	if d.ProxyURL != "http://127.0.0.1:41999" {
+		t.Errorf("deps carry proxy %q", d.ProxyURL)
+	}
+	os.MkdirAll(filepath.Join(dir, "ctx"), 0o755)
+	_ = d.CloneContext(bg, "qryx", filepath.Join(dir, "ctx", "qryx"))
+	got, _ := os.ReadFile(gitEnv)
+	if !regexp.MustCompile(`(?m)^GIT_CONFIG_KEY_(\d+)=http\.proxy$`).Match(got) ||
+		!strings.Contains(string(got), "=http://127.0.0.1:41999\n") {
+		t.Errorf("the clone does not go through the bridge:\n%s", got)
+	}
+	work := filepath.Join(dir, "work")
+	os.MkdirAll(work, 0o755)
+	os.WriteFile(filepath.Join(work, "go.mod"), []byte("module x\n"), 0o644)
+	if err := d.Prefetch(bg, work); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(goEnv); !strings.Contains(string(got), "HTTPS_PROXY=http://127.0.0.1:41999\n") {
+		t.Errorf("go mod download does not go through the bridge:\n%s", got)
 	}
 }

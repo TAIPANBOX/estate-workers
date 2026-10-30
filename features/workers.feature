@@ -207,10 +207,11 @@ Feature: Estate workers spend the monthly API credits, not the weekly plan limit
     And a stop written by the worker still lands even if that directory was missing
     # test: TestDenyNamesNoSingleFileTheSandboxWouldCreate, TestAutoStopLivesInADeniedDirectoryThatExistsBeforeAnyRun, TestWriteCreatesAMissingStopDirectory
 
-  Scenario: The workers reach the router only for DNS and the internet only over HTTPS
-    Given the two worker users on the host
+  Scenario: The push and proxy users reach the router only for DNS and the internet only over HTTPS
+    Given the push service's and the egress proxy's users on the host
     When either sends a packet
-    Then it may reach the router on port 53, the loopback addresses, and any public address on port 443, and nothing else, not even the host's own LAN address
+    Then it may reach the router on port 53 and any public address on port 443, and nothing else, not the host's loopback nor its own LAN address
+    And the model's user sends nothing on the host at all
     And only their packets are judged, so the host's own services keep their network
     And the filter is a table of its own that leaves Docker's, Incus's and Tailscale's alone
     And neither worker service runs without it
@@ -221,3 +222,17 @@ Feature: Estate workers spend the monthly API credits, not the weekly plan limit
     When the model looks for its release tags
     Then the context clone carries the tags on its branch, and the pushed work clone carries none
     # test: TestContextClonesCarryTagsAndTheWorkCloneDoesNot
+
+  Scenario: The model and the gates see none of the host's services
+    Given services on the host listen on 127.0.0.1 and ::1
+    When the drain service runs the model and the gates
+    Then it runs in a network namespace of its own with nothing but loopback
+    And it reaches out only through the egress proxy's unix socket, which git, Go and claude reach as HTTPS_PROXY through a bridge
+    # test: TestDrainServiceLivesInItsOwnNetworkNamespace, TestTheRunReachesOutThroughTheEgressBridge, TestClonesAndModulesGoThroughTheEgressBridge, TestBridgeJoinsTheLoopbackPortToTheSocket
+
+  Scenario: The egress proxy opens tunnels only to allowlisted public hosts on 443
+    Given a CONNECT request through the egress proxy
+    When the host is off the allowlist, the port is not 443, the name resolves to a private, shared or loopback address, or the method is not CONNECT
+    Then the proxy refuses it and dials nothing
+    And the proxy runs as a user of its own that reaches no loopback or private address itself
+    # test: TestProxyTunnelsOnlyToAllowlistedPublicHostsOn443, TestOnlyInternetAddressesArePublic, TestProxyCarriesTheTunnelBothWays, TestProxyIsItsOwnUserAndReachesNoLoopback

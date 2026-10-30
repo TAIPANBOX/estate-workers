@@ -51,7 +51,9 @@ type Deps struct {
 	// GoModCache is shared by every job; the orchestrator fills it before
 	// the model starts, and the model and the gates only read it.
 	GoModCache string
-	StopPoll   time.Duration
+	// ProxyURL is the egress bridge inside the namespace, empty for none.
+	ProxyURL string
+	StopPoll time.Duration
 
 	Clone        func(ctx context.Context, r task.Resolved, gitDir, workTree string) error
 	CloneContext func(ctx context.Context, repo, dir string) error
@@ -426,6 +428,7 @@ func (d Deps) prepare(r task.Resolved, runDir, jobDir, work string) (agent.Run, 
 	env := agent.Env(key, home, tmp, d.GoRoot)
 	env = append(env, "GOCACHE="+filepath.Join(tmp, "gocache"))
 	env = append(env, templateEnv(r, jobDir)...)
+	env = append(env, agent.ProxyEnv(d.ProxyURL)...)
 	if d.GoModCache != "" {
 		env = append(env, "GOMODCACHE="+d.GoModCache)
 	}

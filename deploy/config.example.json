@@ -25,6 +25,7 @@
     "git": "/usr/bin/git",
     "go_root": "/usr/local/go",
     "push_socket": "/run/claudew-push/push.sock",
+    "proxy_socket": "/run/claudew-proxy/proxy.sock",
     "push_state": "/var/lib/claudew-gh"
   }
 }
