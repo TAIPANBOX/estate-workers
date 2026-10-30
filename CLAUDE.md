@@ -45,6 +45,16 @@ Process and invariants only. English throughout, no long dashes.
 11. **A stop file halts a running model within seconds and its cost is
     still recorded.**
     *(test: `TestAStopFileCancelsARunningModelAndTheSpendIsStillRecorded`, mutant M35)*
+12. **The gates cannot change what is pushed.** They run in a throwaway
+    clone of the committed branch; the delivered tree and git directory are
+    never theirs.
+    *(test: `TestGatesRunInADisposableCloneOfTheBranch`, mutant "the gates run in the delivered tree")*
+13. **A template's environment is only NAME_CONFIG pointing at its own
+    files,** which the model cannot edit and the gates read only.
+    *(tests: `TestTemplateFilesAndEnvStayNarrow`, `TestTemplateFilesReachTheModelAndTheGates`;
+    mutants "a template variable may ...")*
+14. **Every program a gate starts is installed by the installer.**
+    *(test: `TestInstallerProvidesEveryGateProgram`)*
 
 ## Escalate, do not push through
 

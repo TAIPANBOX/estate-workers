@@ -21,6 +21,20 @@ type mutant struct {
 }
 
 var mutants = []mutant{
+	{"the gates run in the delivered tree", "internal/drain/drain.go",
+		"GateRun{Tree: tree,", "GateRun{Tree: work,"},
+	{"template files keep their {{context}} placeholder", "internal/drain/drain.go",
+		"strings.ReplaceAll(content, template.ContextPlaceholder, ctxDir)", "strings.ReplaceAll(content, \"{{nothing}}\", ctxDir)"},
+	{"the model may edit the template's files", "internal/agent/agent.go",
+		`"Edit(//var/lib/claudew/jobs/*/files/**)", `, ``},
+	{"a template variable may have any name", "internal/template/template.go",
+		"if !envNameRe.MatchString(name) {", "if false {"},
+	{"a template variable may be one other programs read", "internal/template/template.go",
+		"if strings.HasPrefix(name, p) {", "if false {"},
+	{"a template variable may point outside the template's files", "internal/template/template.go",
+		"if _, ok := files[m[1]]; !ok || !fileNameRe.MatchString(m[1]) {", "if false {"},
+	{"template variables never reach the gates", "internal/gates/gates.go",
+		"for _, kv := range s.Env {", "for _, kv := range []string(nil) {"},
 	{"a resume does not reset the failure count", "internal/ledger/ledger.go",
 		"case OutcomeOK, OutcomeNoChange, OutcomeResumed:", "case OutcomeOK, OutcomeNoChange:"},
 	{"the resume command writes no ledger line", "cmd/claudew/main.go",

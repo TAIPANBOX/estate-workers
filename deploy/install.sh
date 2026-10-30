@@ -49,7 +49,8 @@ install -m 0644 "$BACKUP/claude-code.asc" /etc/apt/keyrings/claude-code.asc
 echo "deb [signed-by=/etc/apt/keyrings/claude-code.asc] https://downloads.claude.ai/claude-code/apt/stable stable main" \
   > /etc/apt/sources.list.d/claude-code.list
 apt-get update -q
-apt-get install -y -q "claude-code=$CLAUDE_VERSION" bubblewrap socat
+# make: the templates' gates start it (dossier-bump runs `make gates`).
+apt-get install -y -q "claude-code=$CLAUDE_VERSION" bubblewrap socat make
 
 echo "== Go $GO_VERSION"
 if [ ! -x /usr/local/go/bin/go ] || ! /usr/local/go/bin/go version | grep -q "go$GO_VERSION "; then

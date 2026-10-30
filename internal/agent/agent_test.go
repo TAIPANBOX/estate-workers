@@ -349,7 +349,7 @@ func TestDenyGuardsTheWorkerStateButNotTheJobTree(t *testing.T) {
 		for _, p := range []string{
 			"/var/lib/claudew/ledger.jsonl", "/var/lib/claudew/STOP", "/var/lib/claudew/queue/incoming/x.json",
 			"/var/lib/claudew/runs/x/transcript.jsonl", "/var/lib/claudew/cache/gomod/x",
-			job + "/githome/.gitconfig", job + "/context/svc/README.md", "/etc/claudew/config.json",
+			job + "/githome/.gitconfig", job + "/context/svc/README.md", job + "/files/archguard.json", "/etc/claudew/config.json",
 		} {
 			if !denied(tool, p) {
 				t.Errorf("%s of %s is not denied", tool, p)

@@ -60,6 +60,7 @@ var Deny = []string{
 	"Edit(//var/lib/claudew/cache/**)", "Write(//var/lib/claudew/cache/**)",
 	"Edit(//var/lib/claudew/jobs/*/githome/**)", "Write(//var/lib/claudew/jobs/*/githome/**)",
 	"Edit(//var/lib/claudew/jobs/*/context/**)", "Write(//var/lib/claudew/jobs/*/context/**)",
+	"Edit(//var/lib/claudew/jobs/*/files/**)", "Write(//var/lib/claudew/jobs/*/files/**)",
 	"Edit(//etc/**)", "Write(//etc/**)",
 }
 

@@ -44,9 +44,15 @@ type Template struct {
 	MaxFiles      int               `json:"max_files"`
 	MaxAddedLines int               `json:"max_added_lines"`
 	Gates         [][]string        `json:"gates"`
-	Prompt        string            `json:"prompt"`
-	PRTitle       string            `json:"pr_title"`
-	PadTokens     int               `json:"pad_tokens"`
+	// Files are written into the job before the model starts, for tools
+	// that read their configuration from a file; {{context}} is the
+	// read-only directory holding the context repositories.
+	Files map[string]string `json:"files"`
+	// Env points a tool at one of Files: NAME_CONFIG -> {{files}}/name.
+	Env       map[string]string `json:"env"`
+	Prompt    string            `json:"prompt"`
+	PRTitle   string            `json:"pr_title"`
+	PadTokens int               `json:"pad_tokens"`
 }
 
 var (
@@ -63,6 +69,27 @@ var (
 	plainTools = []string{"Read", "Glob", "Grep"}
 	// Scoped edit tools: only the working directory of the run.
 	scopedEditTools = []string{"Edit(./**)", "Write(./**)"}
+	// A template file is a plain name in the job's files directory.
+	fileNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,40}$`)
+	// A template variable names a tool's config file and nothing else.
+	envNameRe  = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,40}_CONFIG$`)
+	envValueRe = regexp.MustCompile(`^\{\{files\}\}/(.+)$`)
+	// Prefixes of variables that a shell, git, Go, the loader, a proxy or
+	// Claude Code reads; a template may set none of them.
+	refusedEnvPrefixes = []string{
+		"GIT", "GO", "CGO", "LD_", "CLAUDE", "ANTHROPIC", "NODE", "NPM", "BASH", "PYTHON",
+		"PERL", "SSL", "CURL", "XDG", "HTTP", "PROXY", "MCP", "OTEL", "AWS", "GH_", "GITHUB",
+		"DOCKER", "SSH", "DISABLE",
+	}
+)
+
+// MaxFileSize bounds a template file.
+const MaxFileSize = 16 << 10
+
+// Reserved placeholders, filled per job rather than from task params.
+const (
+	ContextPlaceholder = "{{context}}"
+	FilesPlaceholder   = "{{files}}"
 )
 
 // Load returns the templates compiled into the binary, keyed by name.
@@ -216,6 +243,27 @@ func (t Template) Validate() error {
 		if _, err := regexp.Compile(re); err != nil {
 			add("param %q regex: %v", k, err)
 		}
+		if k == "context" || k == "files" {
+			add("param name %q is reserved", k)
+		}
+	}
+	for name, content := range t.Files {
+		if !fileNameRe.MatchString(name) {
+			add("file name %q is not a plain name", name)
+		}
+		if len(content) > MaxFileSize {
+			add("file %q is over %d bytes", name, MaxFileSize)
+		}
+		for _, m := range placeholderRe.FindAllStringSubmatch(content, -1) {
+			if _, ok := t.Params[m[1]]; !ok && m[0] != ContextPlaceholder {
+				add("file %q uses {{%s}}, which is neither a param nor {{context}}", name, m[1])
+			}
+		}
+	}
+	for name, value := range t.Env {
+		if err := checkEnv(name, value, t.Files); err != nil {
+			add("%v", err)
+		}
 	}
 	if len(t.AllowedModels) == 0 || !slices.Contains(t.AllowedModels, t.Model) {
 		add("model %q must be one of allowed_models", t.Model)
@@ -274,7 +322,7 @@ func (t Template) Validate() error {
 			add("pad_tokens is only for probes")
 		}
 	case KindProbe:
-		if len(t.Repos)+len(t.ContextRepos)+len(t.AllowedPaths)+len(t.Gates)+len(t.AllowedTools) != 0 {
+		if len(t.Repos)+len(t.ContextRepos)+len(t.AllowedPaths)+len(t.Gates)+len(t.AllowedTools)+len(t.Files)+len(t.Env) != 0 {
 			add("a probe touches no repository and has no tools, paths or gates")
 		}
 		if len(t.Params) != 0 {
@@ -301,6 +349,26 @@ func (t Template) Validate() error {
 	if len(errs) > 0 {
 		sort.Strings(errs)
 		return errors.New(strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+// checkEnv allows NAME_CONFIG pointing at one of the template's own files.
+func checkEnv(name, value string, files map[string]string) error {
+	if !envNameRe.MatchString(name) {
+		return fmt.Errorf("env %q is not an upper-case NAME_CONFIG", name)
+	}
+	for _, p := range refusedEnvPrefixes {
+		if strings.HasPrefix(name, p) {
+			return fmt.Errorf("env %q starts with %s, which other programs read", name, p)
+		}
+	}
+	m := envValueRe.FindStringSubmatch(value)
+	if m == nil {
+		return fmt.Errorf("env %s must be %s/<file>, not %q", name, FilesPlaceholder, value)
+	}
+	if _, ok := files[m[1]]; !ok || !fileNameRe.MatchString(m[1]) {
+		return fmt.Errorf("env %s names %q, which is not one of the template's files", name, m[1])
 	}
 	return nil
 }

@@ -173,3 +173,29 @@ Feature: Estate workers spend the monthly API credits, not the weekly plan limit
     When the drain service clones it
     Then the bundle belongs to the drain service's group and can be read
     # test: TestExportedBundlesAreReadableByTheDrainService
+
+  Scenario: Every program a gate starts is on the host before any model is paid for
+    Given a template whose gate starts a host program such as make
+    When the installer sets up the host
+    Then it installs that program, so the gate cannot fail for want of it after the run is paid
+    # test: TestInstallerProvidesEveryGateProgram
+
+  Scenario: The gates cannot change what is pushed
+    Given the repository's own gates reset and clean their tree to check themselves
+    When the worker runs them on a finished change
+    Then they run in a throwaway copy of the committed branch with its own history
+    And the delivered tree and the pushed branch are exactly what was checked
+    # test: TestGatesRunInADisposableCloneOfTheBranch
+
+  Scenario: A template can give a tool its config file and nothing wider
+    Given a repository's tool reads its configuration from a file a variable names
+    When a template ships that file and points a NAME_CONFIG variable at it
+    Then the model and the gates both see the file, with the context directory filled in
+    And the model cannot edit it, and the gates can read only it and the context beside their tree
+    # test: TestTemplateFilesReachTheModelAndTheGates, TestArgsBindReadOnlyPathsAndSetTheTemplateEnv
+
+  Scenario: A template variable cannot reach a shell, git, Go, the loader or Claude Code
+    Given a template that names an environment variable
+    When it is anything but an upper-case NAME_CONFIG pointing at one of its own files
+    Then the template is refused
+    # test: TestTemplateFilesAndEnvStayNarrow

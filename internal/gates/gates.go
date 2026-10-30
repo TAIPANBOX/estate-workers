@@ -17,12 +17,17 @@ type Sandbox struct {
 	Bwrap      string
 	GoRoot     string
 	GoModCache string
-	GitDir     string
-	Timeout    time.Duration
+	// ReadOnly paths the gates may read besides their tree.
+	ReadOnly []string
+	// Env is the template's NAME=value pairs; the fixed variables win.
+	Env     []string
+	Timeout time.Duration
 }
 
-// Args is the bwrap command line for one gate command.
-func (s Sandbox) Args(repoDir string, argv []string) []string {
+// Args is the bwrap command line for one gate command. The tree is the
+// only writable path; ReadOnly paths are bound read-only after it; the
+// template's variables come first so the fixed ones override them.
+func (s Sandbox) Args(tree string, argv []string) []string {
 	a := []string{
 		"--unshare-all", "--die-with-parent", "--new-session",
 		"--ro-bind", "/usr", "/usr",
@@ -39,11 +44,19 @@ func (s Sandbox) Args(repoDir string, argv []string) []string {
 		"--tmpfs", "/tmp",
 		"--ro-bind", s.GoRoot, s.GoRoot,
 		"--ro-bind", s.GoModCache, s.GoModCache,
-		"--ro-bind", s.GitDir, s.GitDir,
-		"--bind", repoDir, repoDir,
-		"--chdir", repoDir,
-		"--clearenv",
-		"--setenv", "PATH", s.GoRoot + "/bin:/usr/bin:/bin",
+		"--bind", tree, tree,
+	}
+	for _, p := range s.ReadOnly {
+		a = append(a, "--ro-bind", p, p)
+	}
+	a = append(a, "--chdir", tree, "--clearenv")
+	for _, kv := range s.Env {
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			a = append(a, "--setenv", k, v)
+		}
+	}
+	a = append(a,
+		"--setenv", "PATH", s.GoRoot+"/bin:/usr/bin:/bin",
 		"--setenv", "HOME", "/tmp",
 		"--setenv", "LANG", "C.UTF-8",
 		"--setenv", "GOPATH", "/tmp/gopath",
@@ -55,7 +68,7 @@ func (s Sandbox) Args(repoDir string, argv []string) []string {
 		"--setenv", "GIT_CONFIG_NOSYSTEM", "1",
 		"--setenv", "GIT_CONFIG_GLOBAL", "/dev/null",
 		"--",
-	}
+	)
 	return append(a, argv...)
 }
 

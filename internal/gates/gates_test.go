@@ -12,7 +12,7 @@ import (
 )
 
 func sandbox() Sandbox {
-	return Sandbox{Bwrap: "/usr/bin/bwrap", GoRoot: "/usr/local/go", GoModCache: "/var/lib/claudew/cache/gomod", GitDir: "/var/lib/claudew/runs/x/git"}
+	return Sandbox{Bwrap: "/usr/bin/bwrap", GoRoot: "/usr/local/go", GoModCache: "/var/lib/claudew/cache/gomod"}
 }
 
 func TestArgsCutTheNetworkAndHideCredentials(t *testing.T) {
@@ -114,5 +114,35 @@ func TestRunHonoursTheTimeout(t *testing.T) {
 	}
 	if time.Since(start) > 4*time.Second {
 		t.Errorf("timeout took %v", time.Since(start))
+	}
+}
+
+// The template's files and the context are bound read-only, the tree stays
+// the only writable path, and the fixed variables win over the template's.
+func TestArgsBindReadOnlyPathsAndSetTheTemplateEnv(t *testing.T) {
+	s := sandbox()
+	s.ReadOnly = []string{"/var/lib/claudew/jobs/x/context", "/var/lib/claudew/jobs/x/files"}
+	s.Env = []string{"ARCHGUARD_CONFIG=/var/lib/claudew/jobs/x/files/archguard.json", "PATH=/evil"}
+	a := s.Args("/var/lib/claudew/jobs/x/gates", []string{"make", "gates"})
+	joined := strings.Join(a, " ")
+	for _, p := range s.ReadOnly {
+		if !strings.Contains(joined, "--ro-bind "+p+" "+p) {
+			t.Errorf("%s is not bound read-only", p)
+		}
+	}
+	if !strings.Contains(joined, "--setenv ARCHGUARD_CONFIG /var/lib/claudew/jobs/x/files/archguard.json") {
+		t.Error("the template's variable is not set")
+	}
+	last := ""
+	for i := range a {
+		if a[i] == "--setenv" && a[i+1] == "PATH" {
+			last = a[i+2]
+		}
+	}
+	if last != "/usr/local/go/bin:/usr/bin:/bin" {
+		t.Errorf("PATH ends as %q", last)
+	}
+	if n := strings.Count(" "+joined+" ", " --bind "); n != 1 {
+		t.Errorf("%d writable binds, want 1", n)
 	}
 }
