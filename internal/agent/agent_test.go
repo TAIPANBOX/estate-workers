@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/TAIPANBOX/estate-workers/internal/glob"
 )
 
 const fakeKey = "sk-ant-api03-FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE" // secretscan:allow test-only fake
@@ -47,6 +49,7 @@ func TestArgsAreBareAndPrintAndNeverCarryTheKey(t *testing.T) {
 		"--permission-prompts": "none",
 		"--max-turns":          "40",
 		"--max-budget-usd":     "2.00",
+		"--tools":              "Read,Edit,Bash",
 		"--allowedTools":       "Read,Edit(./**),Bash(make gates)",
 		"--disallowedTools":    "WebFetch,WebSearch,Agent",
 		"--settings":           "/var/lib/claudew/runs/x/settings.json",
@@ -321,5 +324,43 @@ func TestManagedSettingsLockWhatAPerRunFileCouldLoosen(t *testing.T) {
 	}
 	if m.Env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] != "1" || m.Env["DISABLE_UPDATES"] != "1" {
 		t.Errorf("env %v", m.Env)
+	}
+}
+
+// Claude Code applies Edit and Write deny rules to the paths shell commands
+// write as well, so a deny that covers the job's repository stops every edit
+// the task needs (measured on the host 2026-10-30).
+func TestDenyGuardsTheWorkerStateButNotTheJobTree(t *testing.T) {
+	const job = "/var/lib/claudew/jobs/20261030T000000Z-abcdef"
+	denied := func(tool, path string) bool {
+		for _, r := range Deny {
+			if p, ok := strings.CutPrefix(r, tool+"(//"); ok && glob.Match("/"+strings.TrimSuffix(p, ")"), path) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, tool := range []string{"Edit", "Write"} {
+		for _, p := range []string{job + "/repo/services/x.md", job + "/repo/README.md", job + "/home/.claude.json", job + "/tmp/x"} {
+			if denied(tool, p) {
+				t.Errorf("%s of %s is denied, so the model cannot work there", tool, p)
+			}
+		}
+		for _, p := range []string{
+			"/var/lib/claudew/ledger.jsonl", "/var/lib/claudew/STOP", "/var/lib/claudew/queue/incoming/x.json",
+			"/var/lib/claudew/runs/x/transcript.jsonl", "/var/lib/claudew/cache/gomod/x",
+			job + "/githome/.gitconfig", job + "/context/svc/README.md", "/etc/claudew/config.json",
+		} {
+			if !denied(tool, p) {
+				t.Errorf("%s of %s is not denied", tool, p)
+			}
+		}
+	}
+}
+
+func TestBuiltinToolsAreTheBaseNamesOfTheRules(t *testing.T) {
+	got := BuiltinTools([]string{"Read", "Edit(./**)", "Write(./**)", "Bash(make gates)", "Bash(git diff)", "Grep"})
+	if !slices.Equal(got, []string{"Read", "Edit", "Write", "Bash", "Grep"}) {
+		t.Errorf("BuiltinTools = %v", got)
 	}
 }

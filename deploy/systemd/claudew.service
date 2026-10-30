@@ -19,6 +19,9 @@ KillSignal=SIGINT
 TimeoutStopSec=20s
 TimeoutStartSec=50min
 
+# No RestrictSUIDSGID: its filter answers openat2 with ENOSYS and the
+# shell sandbox (bubblewrap) cannot open any path. NoNewPrivileges still
+# stops a set-uid file from granting anything.
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
@@ -30,7 +33,6 @@ ProtectKernelLogs=yes
 ProtectControlGroups=yes
 ProtectClock=yes
 ProtectHostname=yes
-RestrictSUIDSGID=yes
 RestrictRealtime=yes
 LockPersonality=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK

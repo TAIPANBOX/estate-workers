@@ -21,6 +21,12 @@ type mutant struct {
 }
 
 var mutants = []mutant{
+	{"a run offers only the minimal-mode tools", "internal/agent/agent.go",
+		`"--tools", strings.Join(BuiltinTools(in.AllowedTools), ","),`, ``},
+	{"the deny covers the whole state directory again", "internal/agent/agent.go",
+		`"Edit(//var/lib/claudew/queue/**)", `, `"Edit(//var/lib/claudew/**)", `},
+	{"the git home is writable by the model", "internal/agent/agent.go",
+		`"Edit(//var/lib/claudew/jobs/*/githome/**)", `, ``},
 	{"budget ignores the run's own reservation against the month cap", "internal/budget/budget.go",
 		"case s.Month+runCapUSD > cfg.MonthCapUSD:", "case s.Month > cfg.MonthCapUSD:"},
 	{"budget forgets unverified billing", "internal/budget/budget.go",
