@@ -142,3 +142,16 @@ Feature: Estate workers spend the monthly API credits, not the weekly plan limit
     When the model runs a shell command
     Then bubblewrap can still open paths, because no filter in the service answers its calls with ENOSYS
     # test: TestDrainServiceLetsBubblewrapOpenPaths
+
+  Scenario: The sandbox's own empty files never reach a pull request
+    Given the shell sandbox leaves empty files such as .env and package.json in the working tree
+    When the task's change is collected
+    Then those empty new files are dropped and only the model's change is checked and pushed
+    And a new file with content, whatever its name, is still checked and refused when it is not allowed
+    # test: TestSandboxPlaceholdersDoNotReachTheDiff, TestOnlyEmptyNewFilesAreTreatedAsPlaceholders
+
+  Scenario: The shell sandbox can mount what it needs inside the drain service
+    Given the drain service hides container sockets and keeps no mounts over /proc
+    When the model runs a shell command
+    Then bubblewrap can mask the sockets and mount a fresh /proc
+    # test: TestDrainServiceLetsBubblewrapOpenPaths

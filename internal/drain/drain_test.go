@@ -537,3 +537,50 @@ func TestIdentityHasDefaults(t *testing.T) {
 		t.Error("now is zero")
 	}
 }
+
+// Claude Code's shell sandbox leaves empty mount-point files in the working
+// tree (measured on the host 2026-10-30). They are not the model's change,
+// and the diff check would refuse them and stop the workers.
+func TestSandboxPlaceholdersDoNotReachTheDiff(t *testing.T) {
+	h := newHarness(t)
+	h.edit = func(dir string) {
+		os.WriteFile(filepath.Join(dir, "services", "agent-stack-go.md"), []byte("verified_at: bbb\n"), 0o644)
+		for _, f := range []string{".env", ".env.local", "package.json", ".npmrc", "yarn.lock", ".gitmodules", "bunfig.toml"} {
+			os.WriteFile(filepath.Join(dir, f), nil, 0o644)
+		}
+		os.MkdirAll(filepath.Join(dir, ".claude", "agents"), 0o755)
+		os.MkdirAll(filepath.Join(dir, "node_modules", ".bin"), 0o755)
+	}
+	h.enqueue(t, dossier())
+	rep, err := Once(bg, h.d)
+	if err != nil || rep.Outcome != ledger.OutcomeOK {
+		t.Fatalf("report %+v err %v", rep, err)
+	}
+	g := gitx.Git{Bin: h.d.GitBin, GitDir: h.remote, Dir: h.root, Home: h.root}
+	branch := "refs/heads/worker/dossier-bump/" + rep.ID
+	files, err := g.Out(bg, "diff", "--name-only", branch+"^", branch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(files) != "services/agent-stack-go.md" {
+		t.Errorf("pushed files %q", files)
+	}
+	if s, _ := h.d.stops().Stopped(); s {
+		t.Error("the workers stopped")
+	}
+}
+
+// A new file with content is the model's change, whatever its name: the
+// diff check still sees it and refuses the task.
+func TestOnlyEmptyNewFilesAreTreatedAsPlaceholders(t *testing.T) {
+	h := newHarness(t)
+	h.edit = func(dir string) {
+		os.WriteFile(filepath.Join(dir, "services", "agent-stack-go.md"), []byte("verified_at: bbb\n"), 0o644)
+		os.WriteFile(filepath.Join(dir, ".env"), []byte("TOKEN=x\n"), 0o644)
+	}
+	h.enqueue(t, dossier())
+	rep, _ := Once(bg, h.d)
+	if rep.Outcome == ledger.OutcomeOK || len(h.prs.got) != 0 {
+		t.Fatalf("a .env with content was let through: %+v", rep)
+	}
+}
