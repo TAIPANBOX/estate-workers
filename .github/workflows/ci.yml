@@ -1,0 +1,45 @@
+# Checks for every change to estate-workers.
+#
+# COST: nothing. The repository is public and runs on a standard runner;
+# a matrix, a larger runner or a schedule would be a spending decision.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: false
+
+      - name: Format and vet
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt: the files above are not formatted"; exit 1; }
+          go vet ./...
+
+      - name: Tests, race detector on, scenarios bound both ways
+        run: go test -race -count=1 ./...
+
+      # Every named mutant of a money, reach or credential check must be
+      # killed by an existing test.
+      - name: Mutants
+        run: go run ./cmd/mutants
+
+  secretscan:
+    uses: TAIPANBOX/estate-gates/.github/workflows/secretscan.yml@cb9879fc3f2528cac7674196c3da9e3c40a411c0
+    with:
+      scanner-ref: cb9879fc3f2528cac7674196c3da9e3c40a411c0
