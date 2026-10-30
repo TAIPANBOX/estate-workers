@@ -1,0 +1,26 @@
+{
+  "name": "dossier-bump",
+  "kind": "repo",
+  "tier": "T1",
+  "repos": ["architecture"],
+  "context_repos": ["{{service}}"],
+  "params": {"service": "^[a-z][a-z0-9-]{1,40}$"},
+  "model": "claude-sonnet-5-5",
+  "allowed_models": ["claude-haiku-5-5", "claude-sonnet-5-5"],
+  "max_turns": 40,
+  "max_budget_usd": 2.0,
+  "allowed_tools": [
+    "Read", "Glob", "Grep", "Edit(./**)", "Write(./**)",
+    "Bash(git -C ../context/{{service}} log *)",
+    "Bash(git -C ../context/{{service}} show *)",
+    "Bash(git -C ../context/{{service}} rev-parse HEAD)",
+    "Bash(git diff)", "Bash(git diff --stat)", "Bash(git status)", "Bash(git status --porcelain)",
+    "Bash(make build)", "Bash(make gates)", "Bash(./bin/archguard *)"
+  ],
+  "allowed_paths": ["services/{{service}}.md", "README.md"],
+  "max_files": 2,
+  "max_added_lines": 400,
+  "gates": [["make", "gates"]],
+  "pr_title": "docs({{service}}): move the dossier to the service's current main",
+  "prompt": "Bring the architecture dossier of the service {{service}} up to the service's current main branch.\n\nWhere things are:\n- This repository is TAIPANBOX/architecture. Read its CLAUDE.md and docs/examples/example.md before changing anything.\n- The dossier is services/{{service}}.md. Its frontmatter field verified_at is the service commit the dossier was last checked against, and verified is that date.\n- The service's main branch is checked out read-only at ../context/{{service}}. Use `git -C ../context/{{service}} log --stat <verified_at>..HEAD` to see what changed and `git -C ../context/{{service}} show <sha>` to read a change. `git -C ../context/{{service}} rev-parse HEAD` is the new commit.\n\nWhat to do:\n1. Read the changes since verified_at. Re-read only the dossier sections those changes touch and correct every statement they made false. Cite the commit for each correction, as the dossier already does.\n2. Set verified_at to the new commit and verified to today's date (UTC).\n3. Add to section 11 a short entry saying what merged since the previous verified_at.\n4. Run `make build`, then `./bin/archguard render-index` to regenerate README.md.\n5. Run `make gates`. Every gate must pass before you finish.\n\nRules: change only services/{{service}}.md and README.md. Mark your own conclusions @claude. Never quote a person and never attribute a decision to the owner by name. No long dashes anywhere. If a change is too large or unclear to describe from the code, say so in section 11 instead of guessing.\n\nFinish with a short reply: what you changed and why, what you ran and what it printed, and what you did not verify."
+}

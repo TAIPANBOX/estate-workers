@@ -1,0 +1,13 @@
+[Unit]
+Description=estate workers: push service socket
+
+[Socket]
+ListenStream=/run/claudew-push/push.sock
+SocketUser=claudew-gh
+SocketGroup=claudew
+SocketMode=0660
+DirectoryMode=0750
+Accept=no
+
+[Install]
+WantedBy=sockets.target

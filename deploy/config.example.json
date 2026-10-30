@@ -1,0 +1,30 @@
+{
+  "owner": "TAIPANBOX",
+  "repos": [
+    "agent-passport", "agent-stack-go", "architecture", "catalog", "costcrew", "engram",
+    "estate-gates", "genaryx", "heraldyx", "idryx", "keyryx", "mockryx", "qryx", "scopyx",
+    "stack-k8s", "stack-single", "stack-up", "taipan", "terraform-provider-taipan", "tokenfuse",
+    "trailryx", "typryx", "typryx-evalset", "verdryx", "vouchryx", "wardryx"
+  ],
+  "private_repos": ["architecture"],
+  "day_cap_usd": 6,
+  "month_cap_usd": 80,
+  "billing_verified": false,
+  "unverified_cap_usd": 0.10,
+  "run_cap_usd": {"claude-haiku-5-5": 0.50, "claude-sonnet-5-5": 2.00, "claude-opus-5-5": 4.00},
+  "max_consecutive_failures": 3,
+  "commit_name": "taipanbox-workers[bot]",
+  "commit_email": "APP_USER_ID+taipanbox-workers[bot]@users.noreply.github.com",
+  "app_id": "",
+  "paths": {
+    "state": "/var/lib/claudew",
+    "manual_stop": "/etc/claudew/STOP",
+    "claude": "/usr/bin/claude",
+    "secretscan": "/opt/claudew/bin/secretscan",
+    "bwrap": "/usr/bin/bwrap",
+    "git": "/usr/bin/git",
+    "go_root": "/usr/local/go",
+    "push_socket": "/run/claudew-push/push.sock",
+    "push_state": "/var/lib/claudew-gh"
+  }
+}

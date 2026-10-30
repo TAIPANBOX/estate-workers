@@ -1,0 +1,10 @@
+[Unit]
+Description=estate workers: drain the queue every 20 minutes
+
+[Timer]
+OnBootSec=10min
+OnUnitInactiveSec=20min
+Persistent=false
+
+[Install]
+WantedBy=timers.target

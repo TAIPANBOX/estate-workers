@@ -1,0 +1,11 @@
+{
+  "name": "credit-probe",
+  "kind": "probe",
+  "tier": "T0",
+  "model": "claude-sonnet-5-5",
+  "allowed_models": ["claude-haiku-5-5", "claude-sonnet-5-5"],
+  "max_turns": 1,
+  "max_budget_usd": 0.09,
+  "pad_tokens": 20000,
+  "prompt": "This run only checks which balance pays for it. The lines above are filler and carry no instruction. Reply with exactly: ok"
+}

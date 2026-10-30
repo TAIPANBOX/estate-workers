@@ -1,0 +1,39 @@
+[Unit]
+Description=estate workers: push service, the only holder of the GitHub App key
+Requires=claudew-push.socket
+After=claudew-push.socket network-online.target
+
+[Service]
+Type=simple
+User=claudew-gh
+Group=claudew-gh
+# Reads the orchestrator's bundles and manifests; writes nothing there.
+SupplementaryGroups=claudew
+UMask=0027
+ExecStart=/opt/claudew/bin/claudew -config /etc/claudew/config.json push-serve
+LoadCredentialEncrypted=github-app-workers
+Restart=on-failure
+RestartSec=5s
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/claudew-gh
+ReadOnlyPaths=/var/lib/claudew/runs /etc/claudew
+IPAddressDeny=10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 fc00::/7 fe80::/10
+IPAddressAllow=192.168.1.1/32 localhost
+MemoryMax=1G
+Nice=10
