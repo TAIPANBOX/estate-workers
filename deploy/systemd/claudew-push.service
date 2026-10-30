@@ -11,7 +11,7 @@ Group=claudew-gh
 SupplementaryGroups=claudew
 UMask=0027
 ExecStart=/opt/claudew/bin/claudew -config /etc/claudew/config.json push-serve
-LoadCredentialEncrypted=github-app-workers
+LoadCredentialEncrypted=github-app-workers:/etc/credstore.encrypted/github-app-workers.cred
 Restart=on-failure
 RestartSec=5s
 
