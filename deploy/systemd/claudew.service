@@ -12,7 +12,7 @@ UMask=0027
 # Skip the night window that belongs to the range agents and the backup.
 ExecCondition=/bin/sh -c 'h=$(TZ=Europe/London date +%%H%%M); [ "$h" -lt 200 ] || [ "$h" -ge 430 ]'
 ExecStart=/opt/claudew/bin/claudew -config /etc/claudew/config.json drain
-LoadCredentialEncrypted=anthropic-workers
+LoadCredentialEncrypted=anthropic-workers:/etc/credstore.encrypted/anthropic-workers.cred
 
 # A stop or a kill reaches claude as SIGINT first, so it can record its cost.
 KillSignal=SIGINT

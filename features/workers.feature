@@ -117,3 +117,9 @@ Feature: Estate workers spend the monthly API credits, not the weekly plan limit
     When the task completes
     Then a pull request opens with a fixed report, a model co-author and a NOT proven section
     # test: TestOnceTakesADossierTaskToAPullRequest, TestBodyHasTheFixedShapeAndFencesTheModelReport
+
+  Scenario: The service loads the very credential the installer stored
+    Given a credential put on the host by the installer
+    When the service starts
+    Then it loads that file by its full path, and the uninstaller removes the same file
+    # test: TestServicesLoadTheFilePutCredentialWrites
