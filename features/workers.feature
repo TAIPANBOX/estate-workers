@@ -155,3 +155,9 @@ Feature: Estate workers spend the monthly API credits, not the weekly plan limit
     When the model runs a shell command
     Then bubblewrap can mask the sockets and mount a fresh /proc
     # test: TestDrainServiceLetsBubblewrapOpenPaths
+
+  Scenario: Only the drain service can reach the push service
+    Given the push service listens on a unix socket
+    When the drain service hands over a finished task
+    Then it can reach the socket, and only members of its group may connect
+    # test: TestPushSocketIsReachableByTheDrainServiceOnly

@@ -84,3 +84,20 @@ func TestDrainServiceLetsBubblewrapOpenPaths(t *testing.T) {
 		t.Error("claudew-push.service lost RestrictSUIDSGID=yes")
 	}
 }
+
+// systemd creates the socket's directory owned by root with DirectoryMode,
+// not by SocketUser, so the drain service could not reach the socket at all
+// (measured on the host 2026-10-30: "connect: permission denied"). The
+// directory must be traversable; the socket's own mode and group decide who
+// may connect.
+func TestPushSocketIsReachableByTheDrainServiceOnly(t *testing.T) {
+	sock := read(t, "systemd/claudew-push.socket")
+	for _, want := range []string{"\nDirectoryMode=0755", "\nSocketMode=0660", "\nSocketUser=claudew-gh", "\nSocketGroup=claudew"} {
+		if !strings.Contains(sock, want) {
+			t.Errorf("claudew-push.socket lacks %q", strings.TrimSpace(want))
+		}
+	}
+	if !strings.Contains(read(t, "systemd/claudew.service"), "\nUser=claudew\n") {
+		t.Error("the drain service no longer runs as claudew, the socket's group")
+	}
+}
