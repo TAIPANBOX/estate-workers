@@ -6,7 +6,9 @@ ListenStream=/run/claudew-push/push.sock
 SocketUser=claudew-gh
 SocketGroup=claudew
 SocketMode=0660
-DirectoryMode=0750
+# systemd creates this directory owned by root, not by SocketUser, so it
+# must be traversable; the socket's mode and group decide who may connect.
+DirectoryMode=0755
 Accept=no
 
 [Install]
