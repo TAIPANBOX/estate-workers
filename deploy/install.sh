@@ -38,7 +38,12 @@ install -d -m 0700 "$BACKUP"
 echo "== Anthropic apt repository, key checked by fingerprint"
 install -d -m 0755 /etc/apt/keyrings
 curl -fsSL https://downloads.claude.ai/keys/claude-code.asc -o "$BACKUP/claude-code.asc"
+# A throwaway keyring home, so root gets no ~/.gnupg from the check.
+GNUPGHOME=$(mktemp -d)
+export GNUPGHOME
 fpr=$(gpg --show-keys --with-colons "$BACKUP/claude-code.asc" | awk -F: '/^fpr/ {print $10; exit}')
+rm -rf "$GNUPGHOME"
+unset GNUPGHOME
 [ "$fpr" = "$CLAUDE_KEY_FPR" ] || { echo "key fingerprint $fpr is not $CLAUDE_KEY_FPR" >&2; exit 1; }
 install -m 0644 "$BACKUP/claude-code.asc" /etc/apt/keyrings/claude-code.asc
 echo "deb [signed-by=/etc/apt/keyrings/claude-code.asc] https://downloads.claude.ai/claude-code/apt/stable stable main" \
