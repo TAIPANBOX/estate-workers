@@ -22,22 +22,27 @@ TimeoutStartSec=50min
 # No RestrictSUIDSGID: its filter answers openat2 with ENOSYS and the
 # shell sandbox (bubblewrap) cannot open any path. NoNewPrivileges still
 # stops a set-uid file from granting anything.
+# No ProtectKernelTunables, ProtectKernelLogs or ProtectHostname either: each
+# lays mounts over parts of /proc, and the kernel then refuses the fresh /proc
+# bubblewrap mounts. This user cannot write /proc/sys, read /proc/kmsg or set
+# the host name anyway.
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes
-ProtectKernelTunables=yes
 ProtectKernelModules=yes
-ProtectKernelLogs=yes
 ProtectControlGroups=yes
 ProtectClock=yes
-ProtectHostname=yes
 RestrictRealtime=yes
 LockPersonality=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 ReadWritePaths=/var/lib/claudew /var/lib/prometheus/node-exporter/claudew.prom
 ReadOnlyPaths=/etc/claudew
+# The shell sandbox masks container runtime sockets, and bubblewrap cannot
+# do that under /run/containerd (mode 0711) as this user. The service does
+# not need containerd, so it sees an empty directory there.
+TemporaryFileSystem=/run/containerd:ro
 
 # The house network, the tailnet and link-local are out of reach; only the
 # router's DNS and loopback (the sandbox proxy) are allowed.

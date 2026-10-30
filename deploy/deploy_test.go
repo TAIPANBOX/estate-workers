@@ -65,6 +65,18 @@ func TestDrainServiceLetsBubblewrapOpenPaths(t *testing.T) {
 	if strings.Contains(read(t, "systemd/claudew.service"), "\nRestrictSUIDSGID=yes") {
 		t.Error("claudew.service sets RestrictSUIDSGID=yes, which breaks bubblewrap")
 	}
+	unit := read(t, "systemd/claudew.service")
+	// Each lays mounts over /proc, and the kernel then refuses the fresh
+	// /proc bubblewrap mounts (measured on the host 2026-10-30).
+	for _, p := range []string{"ProtectKernelTunables=yes", "ProtectKernelLogs=yes", "ProtectHostname=yes"} {
+		if strings.Contains(unit, "\n"+p) {
+			t.Errorf("claudew.service sets %s, which stops bubblewrap mounting /proc", p)
+		}
+	}
+	// bubblewrap cannot mask the socket under /run/containerd (0711).
+	if !strings.Contains(unit, "\nTemporaryFileSystem=/run/containerd:ro") {
+		t.Error("claudew.service does not hide /run/containerd")
+	}
 	if !strings.Contains(read(t, "systemd/claudew.service"), "\nNoNewPrivileges=yes") {
 		t.Error("claudew.service lost NoNewPrivileges=yes")
 	}

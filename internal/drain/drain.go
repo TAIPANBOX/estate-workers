@@ -463,6 +463,9 @@ func (d Deps) runAgent(ctx context.Context, run agent.Run) (agent.Result, error,
 // deliver checks, commits, gates and hands the branch to the push service.
 func (d Deps) deliver(ctx context.Context, r task.Resolved, g gitx.Git, base, baseBranch, runDir, work string, res agent.Result, cost float64) (string, string, string) {
 	l := d.layout()
+	if err := dropSandboxPlaceholders(ctx, g, work); err != nil {
+		return ledger.OutcomeError, err.Error(), ""
+	}
 	if _, err := g.Run(ctx, "add", "-A"); err != nil {
 		return ledger.OutcomeError, err.Error(), ""
 	}
@@ -576,4 +579,33 @@ func writeJSON(path string, v any) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o640)
+}
+
+// dropSandboxPlaceholders removes the empty files Claude Code's shell sandbox
+// leaves in the working tree as mount points for paths it guards (.env*,
+// package.json, lock files, .npmrc and the like, measured on the host
+// 2026-10-30). Only untracked regular files of size zero go: a new file with
+// content is the model's and the diff check judges it like any other, and a
+// tracked file the model emptied is a change the check must see.
+func dropSandboxPlaceholders(ctx context.Context, g gitx.Git, work string) error {
+	out, err := g.Run(ctx, "ls-files", "-z", "--others", "--exclude-standard")
+	if err != nil {
+		return err
+	}
+	for _, rel := range strings.Split(string(out), "\x00") {
+		if rel == "" {
+			continue
+		}
+		p := filepath.Join(work, filepath.FromSlash(rel))
+		fi, err := os.Lstat(p)
+		if err != nil {
+			return err
+		}
+		if fi.Mode().IsRegular() && fi.Size() == 0 {
+			if err := os.Remove(p); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

@@ -21,6 +21,10 @@ type mutant struct {
 }
 
 var mutants = []mutant{
+	{"sandbox placeholders reach the diff", "internal/drain/drain.go",
+		"if err := dropSandboxPlaceholders(ctx, g, work); err != nil {", "if err := error(nil); err != nil {"},
+	{"every new file counts as a placeholder", "internal/drain/drain.go",
+		"if fi.Mode().IsRegular() && fi.Size() == 0 {", "if fi.Mode().IsRegular() {"},
 	{"a run offers only the minimal-mode tools", "internal/agent/agent.go",
 		`"--tools", strings.Join(BuiltinTools(in.AllowedTools), ","),`, ``},
 	{"the deny covers the whole state directory again", "internal/agent/agent.go",
