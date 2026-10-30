@@ -1,6 +1,8 @@
 package ledger
 
 import (
+	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -158,5 +160,25 @@ func TestSumFileTreatsAMissingFileAsEmptyAndReadsAFile(t *testing.T) {
 	}
 	if _, err := SumFile(dir, now); err == nil {
 		t.Error("a directory read as a ledger")
+	}
+}
+
+// The failure count is read from the ledger, so after repeated failures only
+// a line in the ledger can reset it; clearing the stop files alone left the
+// workers stopped for ever (measured on the host 2026-10-30).
+func TestResumeResetsTheFailureCount(t *testing.T) {
+	now := time.Date(2026, 10, 30, 15, 0, 0, 0, time.UTC)
+	var b strings.Builder
+	for i, o := range []string{OutcomeError, OutcomeFailed, OutcomeError, OutcomeResumed, OutcomeError} {
+		line, _ := json.Marshal(Entry{ID: fmt.Sprintf("x%d", i), Outcome: o, At: now})
+		b.Write(line)
+		b.WriteString("\n")
+	}
+	s, err := Sum(strings.NewReader(b.String()), now)
+	if err != nil || s.Malformed != 0 {
+		t.Fatalf("sum %+v err %v", s, err)
+	}
+	if s.ConsecutiveFailures != 1 {
+		t.Errorf("failures after a resume and one error = %d, want 1", s.ConsecutiveFailures)
 	}
 }

@@ -26,9 +26,11 @@ const (
 	OutcomeFailed   = "failed"
 	OutcomeError    = "error"
 	OutcomeStopped  = "stopped"
+	// OutcomeResumed is a person clearing a stop; it resets the failure count.
+	OutcomeResumed = "resumed"
 )
 
-var outcomes = []string{OutcomeSpent, OutcomeOK, OutcomeNoChange, OutcomeRefused, OutcomeFailed, OutcomeError, OutcomeStopped}
+var outcomes = []string{OutcomeSpent, OutcomeOK, OutcomeNoChange, OutcomeRefused, OutcomeFailed, OutcomeError, OutcomeStopped, OutcomeResumed}
 
 // MaxLine bounds one ledger line; a longer line is an error, not a skip.
 const MaxLine = 1 << 20
@@ -134,7 +136,7 @@ func Sum(r io.Reader, now time.Time) (Sums, error) {
 		switch e.Outcome {
 		case OutcomeFailed, OutcomeError:
 			s.ConsecutiveFailures++
-		case OutcomeOK, OutcomeNoChange:
+		case OutcomeOK, OutcomeNoChange, OutcomeResumed:
 			s.ConsecutiveFailures = 0
 		}
 	}

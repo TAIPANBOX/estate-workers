@@ -161,3 +161,15 @@ Feature: Estate workers spend the monthly API credits, not the weekly plan limit
     When the drain service hands over a finished task
     Then it can reach the socket, and only members of its group may connect
     # test: TestPushSocketIsReachableByTheDrainServiceOnly
+
+  Scenario: A person's resume lets the workers run again after repeated failures
+    Given three failures in a row have stopped the workers
+    When a person resumes them
+    Then the stop files are cleared and the failure count starts again from zero
+    # test: TestResumeResetsTheFailureCount, TestResumeAfterRepeatedFailuresLetsTheWorkersRunAgain
+
+  Scenario: The drain service can read what the push service exports
+    Given a private repository is exported by the push service as a bundle
+    When the drain service clones it
+    Then the bundle belongs to the drain service's group and can be read
+    # test: TestExportedBundlesAreReadableByTheDrainService
