@@ -210,7 +210,7 @@ Feature: Estate workers spend the monthly API credits, not the weekly plan limit
   Scenario: The workers reach the router only for DNS and the internet only over HTTPS
     Given the two worker users on the host
     When either sends a packet
-    Then it may reach the router on port 53, the loopback, and any public address on port 443, and nothing else
+    Then it may reach the router on port 53, the loopback addresses, and any public address on port 443, and nothing else, not even the host's own LAN address
     And only their packets are judged, so the host's own services keep their network
     And the filter is a table of its own that leaves Docker's, Incus's and Tailscale's alone
     And neither worker service runs without it
