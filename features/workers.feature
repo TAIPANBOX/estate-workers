@@ -199,3 +199,10 @@ Feature: Estate workers spend the monthly API credits, not the weekly plan limit
     When it is anything but an upper-case NAME_CONFIG pointing at one of its own files
     Then the template is refused
     # test: TestTemplateFilesAndEnvStayNarrow
+
+  Scenario: A shell command the model runs does not stop the workers
+    Given Claude Code's shell sandbox creates a denied file that is missing while a command runs
+    When the model runs a long shell command such as a build
+    Then no file the worker reads as a stop appears, because the stop file lives in a denied directory that already exists
+    And a stop written by the worker still lands even if that directory was missing
+    # test: TestDenyNamesNoSingleFileTheSandboxWouldCreate, TestAutoStopLivesInADeniedDirectoryThatExistsBeforeAnyRun, TestWriteCreatesAMissingStopDirectory

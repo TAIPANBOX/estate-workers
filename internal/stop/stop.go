@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -55,6 +56,9 @@ func Write(path, reason string, now time.Time) error {
 		return errors.New("stop: no path")
 	}
 	body := fmt.Sprintf("%s at %s\n", strings.TrimSpace(reason), now.UTC().Format(time.RFC3339))
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
+	}
 	return os.WriteFile(path, []byte(body), 0o640)
 }
 

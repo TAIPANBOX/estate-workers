@@ -18,6 +18,7 @@ import (
 	"github.com/TAIPANBOX/estate-workers/internal/diffcheck"
 	"github.com/TAIPANBOX/estate-workers/internal/github"
 	"github.com/TAIPANBOX/estate-workers/internal/gitx"
+	"github.com/TAIPANBOX/estate-workers/internal/glob"
 	"github.com/TAIPANBOX/estate-workers/internal/ledger"
 	"github.com/TAIPANBOX/estate-workers/internal/push"
 	"github.com/TAIPANBOX/estate-workers/internal/task"
@@ -685,5 +686,34 @@ func TestTemplateFilesReachTheModelAndTheGates(t *testing.T) {
 	}
 	if strings.Contains(string(cfgData), "{{") {
 		t.Errorf("a placeholder is left in the config:\n%s", cfgData)
+	}
+}
+
+// The auto stop file sits in a directory of its own, created before any
+// run, so the model's write deny covers it without Claude Code's shell
+// sandbox creating the file while a command runs (measured on the host
+// 2026-10-30: an empty STOP in the state directory cancelled a pilot).
+func TestAutoStopLivesInADeniedDirectoryThatExistsBeforeAnyRun(t *testing.T) {
+	l := Layout{State: "/var/lib/claudew"}
+	if filepath.Dir(l.AutoStop()) == l.State {
+		t.Errorf("auto stop %s sits directly in the state directory", l.AutoStop())
+	}
+	for _, tool := range []string{"Edit", "Write"} {
+		denied := false
+		for _, r := range agent.Deny {
+			if p, ok := strings.CutPrefix(r, tool+"(//"); ok && glob.Match("/"+strings.TrimSuffix(p, ")"), l.AutoStop()) {
+				denied = true
+			}
+		}
+		if !denied {
+			t.Errorf("%s of %s is not denied", tool, l.AutoStop())
+		}
+	}
+	h := newHarness(t)
+	if _, err := Once(bg, h.d); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(filepath.Dir(h.d.layout().AutoStop())); err != nil || !fi.IsDir() {
+		t.Errorf("the stop directory does not exist before a run: %v", err)
 	}
 }

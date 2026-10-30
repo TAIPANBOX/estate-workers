@@ -78,3 +78,16 @@ func TestReasonIsOneBoundedLine(t *testing.T) {
 		t.Errorf("firstLine length %d, want 200", len(got))
 	}
 }
+
+// A stop written into a directory that is not there yet is still written:
+// every automatic stop ignores Write's error, so a lost one would let the
+// workers run on.
+func TestWriteCreatesAMissingStopDirectory(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "stop", "STOP")
+	if err := Write(p, "test", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if s, why := (Files{Auto: p}).Stopped(); !s {
+		t.Errorf("not stopped after Write: %s", why)
+	}
+}

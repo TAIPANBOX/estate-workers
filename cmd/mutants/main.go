@@ -21,6 +21,12 @@ type mutant struct {
 }
 
 var mutants = []mutant{
+	{"a deny names the auto stop file itself again", "internal/agent/agent.go",
+		`"Edit(//var/lib/claudew/stop/**)", "Write(//var/lib/claudew/stop/**)",`, `"Edit(//var/lib/claudew/STOP)", "Write(//var/lib/claudew/STOP)",`},
+	{"the auto stop sits directly in the state directory", "internal/drain/drain.go",
+		`return filepath.Join(l.State, "stop", "STOP")`, `return filepath.Join(l.State, "STOP")`},
+	{"a stop into a missing directory is lost", "internal/stop/stop.go",
+		"os.MkdirAll(filepath.Dir(path), 0o750)", "os.MkdirAll(filepath.Dir(filepath.Dir(path)), 0o750)"},
 	{"the gates run in the delivered tree", "internal/drain/drain.go",
 		"GateRun{Tree: tree,", "GateRun{Tree: work,"},
 	{"template files keep their {{context}} placeholder", "internal/drain/drain.go",

@@ -85,18 +85,22 @@ type GateRun struct {
 	Cmds     [][]string
 }
 
-func (l Layout) Incoming() string     { return filepath.Join(l.State, "queue", "incoming") }
-func (l Layout) Running() string      { return filepath.Join(l.State, "queue", "running") }
-func (l Layout) Done() string         { return filepath.Join(l.State, "queue", "done") }
-func (l Layout) Failed() string       { return filepath.Join(l.State, "queue", "failed") }
-func (l Layout) Ledger() string       { return filepath.Join(l.State, "ledger.jsonl") }
-func (l Layout) AutoStop() string     { return filepath.Join(l.State, "STOP") }
+func (l Layout) Incoming() string { return filepath.Join(l.State, "queue", "incoming") }
+func (l Layout) Running() string  { return filepath.Join(l.State, "queue", "running") }
+func (l Layout) Done() string     { return filepath.Join(l.State, "queue", "done") }
+func (l Layout) Failed() string   { return filepath.Join(l.State, "queue", "failed") }
+func (l Layout) Ledger() string   { return filepath.Join(l.State, "ledger.jsonl") }
+
+// AutoStop sits in a directory of its own: the model's write deny then
+// names a directory, and Claude Code's shell sandbox does not create the
+// file while a command runs, as it does for a denied file that is missing.
+func (l Layout) AutoStop() string     { return filepath.Join(l.State, "stop", "STOP") }
 func (l Layout) Run(id string) string { return filepath.Join(l.State, "runs", id) }
 func (l Layout) Job(id string) string { return filepath.Join(l.State, "jobs", id) }
 
 func (l Layout) ensure() error {
 	for _, d := range []string{l.Incoming(), l.Running(), l.Done(), l.Failed(),
-		filepath.Join(l.State, "runs"), filepath.Join(l.State, "jobs")} {
+		filepath.Join(l.State, "runs"), filepath.Join(l.State, "jobs"), filepath.Dir(l.AutoStop())} {
 		if err := os.MkdirAll(d, 0o750); err != nil {
 			return err
 		}
