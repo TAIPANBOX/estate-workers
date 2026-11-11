@@ -12,8 +12,8 @@ set -euo pipefail
 
 CLAUDE_VERSION="2.1.308-1"
 CLAUDE_KEY_FPR="31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE"
-GO_VERSION="1.27.3"
-GO_SHA256="65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
+GO_VERSION="1.27.4"
+GO_SHA256="7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840"
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 1; }
 [ $# -eq 2 ] || { echo "usage: $0 <claudew binary> <secretscan binary>" >&2; exit 1; }
